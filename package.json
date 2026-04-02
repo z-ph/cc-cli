@@ -6,14 +6,18 @@
     "cc": "./bin/cc.js"
   },
   "scripts": {
-    "test": "node tests/config.test.js"
+    "test": "jest",
+    "test:watch": "jest --watch"
   },
   "dependencies": {
     "commander": "^12.0.0",
-    "js-yaml": "^4.1.0",
-    "inquirer": "^9.2.0"
+    "inquirer": "^9.2.0",
+    "js-yaml": "^4.1.0"
   },
   "engines": {
     "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "jest": "^30.3.0"
   }
 }
