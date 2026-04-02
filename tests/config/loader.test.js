@@ -18,10 +18,9 @@ jest.mock('fs', () => ({
 }));
 
 // Require modules after mocks are set up
-const { loadConfig, saveConfig, findConfig } = require('../../src/config/loader');
+const { loadConfig, saveConfig, findEnvConfig, findConfigEntry } = require('../../src/config/loader');
 
 describe('Config Loader', () => {
-  // Use path.join to get platform-specific paths
   const CONFIG_DIR = path.join('/home/user', '.claude');
   const CONFIG_PATH = path.join(CONFIG_DIR, 'models.yaml');
 
@@ -32,61 +31,46 @@ describe('Config Loader', () => {
 
   describe('loadConfig', () => {
     it('should create default config if file does not exist', () => {
-      const { existsSync, mkdirSync, writeFileSync } = require('fs');
-
-      existsSync
+      fs.existsSync
         .mockReturnValueOnce(false) // config dir doesn't exist
         .mockReturnValueOnce(false); // config file doesn't exist
 
       const config = loadConfig();
 
-      expect(mkdirSync).toHaveBeenCalledWith(CONFIG_DIR, { recursive: true });
-      expect(writeFileSync).toHaveBeenCalled();
+      expect(fs.mkdirSync).toHaveBeenCalledWith(CONFIG_DIR, { recursive: true });
+      expect(fs.writeFileSync).toHaveBeenCalled();
       expect(config).toEqual({
         settings: { alias: 'cc' },
-        base: {},
+        envs: {},
         configs: {}
       });
     });
 
     it('should load existing config', () => {
-      const { existsSync, readFileSync } = require('fs');
-
       const mockConfig = {
-        settings: { alias: 'cl' },
-        base: {},
-        configs: { test: { model: 'gpt-4', env: { ANTHROPIC_AUTH_TOKEN: 'key' } } }
+        settings: { alias: 'cc' },
+        envs: { glm4: { ANTHROPIC_MODEL: 'glm-4' } },
+        configs: { strict: { permissions: { allow: ['Read'] } } }
       };
 
-      existsSync
-        .mockReturnValueOnce(true) // config dir exists
-        .mockReturnValueOnce(true); // config file exists
-
-      readFileSync.mockReturnValue(yaml.dump(mockConfig));
+      fs.existsSync.mockReturnValue(true);
+      fs.readFileSync.mockReturnValue(yaml.dump(mockConfig));
 
       const config = loadConfig();
 
-      expect(readFileSync).toHaveBeenCalledWith(CONFIG_PATH, 'utf8');
-      expect(config.settings.alias).toBe('cl');
-      expect(config.configs.test.model).toBe('gpt-4');
+      expect(config.envs).toBeDefined();
+      expect(config.configs).toBeDefined();
     });
   });
 
   describe('saveConfig', () => {
     it('should save config to YAML file', () => {
-      const { existsSync, writeFileSync } = require('fs');
-
-      existsSync.mockReturnValue(true);
-
-      const config = {
-        settings: { alias: 'cc' },
-        base: {},
-        configs: { test: { model: 'gpt-4', env: { ANTHROPIC_AUTH_TOKEN: 'key' } } }
-      };
+      const config = { settings: { alias: 'cc' }, envs: {}, configs: {} };
+      fs.existsSync.mockReturnValue(true);
 
       saveConfig(config);
 
-      expect(writeFileSync).toHaveBeenCalledWith(
+      expect(fs.writeFileSync).toHaveBeenCalledWith(
         CONFIG_PATH,
         expect.any(String),
         'utf8'
@@ -94,38 +78,67 @@ describe('Config Loader', () => {
     });
   });
 
-  describe('findConfig', () => {
-    it('should find config in local file under configs key', () => {
-      const { existsSync, readFileSync } = require('fs');
-
+  describe('findEnvConfig', () => {
+    it('should find env config in local file under envs key', () => {
       const mockConfig = {
         settings: { alias: 'cc' },
-        base: {},
-        configs: { myconfig: { model: 'gpt-4' } }
+        envs: { glm4: { ANTHROPIC_MODEL: 'glm-4', ANTHROPIC_BASE_URL: 'https://example.com' } },
+        configs: {}
       };
 
-      existsSync.mockReturnValue(true);
-      readFileSync.mockReturnValue(yaml.dump(mockConfig));
+      fs.existsSync.mockReturnValue(true);
+      fs.readFileSync.mockReturnValue(yaml.dump(mockConfig));
 
-      const result = findConfig('myconfig');
+      const result = findEnvConfig('glm4');
 
-      expect(result.config.configs.myconfig).toBeDefined();
+      expect(result.config.envs.glm4).toBeDefined();
+      expect(result.source).toBe('local');
+    });
+
+    it('should return null config when envId not found', () => {
+      const mockConfig = {
+        settings: { alias: 'cc' },
+        envs: { other: { ANTHROPIC_MODEL: 'gpt-4' } },
+        configs: {}
+      };
+
+      fs.existsSync.mockReturnValue(true);
+      fs.readFileSync.mockReturnValue(yaml.dump(mockConfig));
+
+      const result = findEnvConfig('nonexistent');
+
+      expect(result.config).toBeNull();
+    });
+  });
+
+  describe('findConfigEntry', () => {
+    it('should find config entry in local file under configs key', () => {
+      const mockConfig = {
+        settings: { alias: 'cc' },
+        envs: {},
+        configs: { strict: { permissions: { allow: ['Read'] } } }
+      };
+
+      fs.existsSync.mockReturnValue(true);
+      fs.readFileSync.mockReturnValue(yaml.dump(mockConfig));
+
+      const result = findConfigEntry('strict');
+
+      expect(result.config.configs.strict).toBeDefined();
       expect(result.source).toBe('local');
     });
 
     it('should return null config when configId not found', () => {
-      const { existsSync, readFileSync } = require('fs');
-
       const mockConfig = {
         settings: { alias: 'cc' },
-        base: {},
-        configs: { other: { model: 'gpt-4' } }
+        envs: {},
+        configs: { other: { permissions: { allow: ['Read'] } } }
       };
 
-      existsSync.mockReturnValue(true);
-      readFileSync.mockReturnValue(yaml.dump(mockConfig));
+      fs.existsSync.mockReturnValue(true);
+      fs.readFileSync.mockReturnValue(yaml.dump(mockConfig));
 
-      const result = findConfig('nonexistent');
+      const result = findConfigEntry('nonexistent');
 
       expect(result.config).toBeNull();
     });

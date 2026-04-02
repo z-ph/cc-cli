@@ -1,11 +1,9 @@
 // Set up mocks before importing modules
 jest.mock('../../src/config/loader');
-jest.mock('../../src/config/merger');
 jest.mock('child_process');
 
 const { launchCommand } = require('../../src/commands/launch');
-const { findConfig } = require('../../src/config/loader');
-const { mergeSettings, writeSettingsLocal } = require('../../src/config/merger');
+const { findEnvConfig } = require('../../src/config/loader');
 const { spawn } = require('child_process');
 
 describe('Launch Command', () => {
@@ -16,12 +14,9 @@ describe('Launch Command', () => {
   beforeEach(() => {
     jest.clearAllMocks();
 
-    // Mock process.exit to prevent actual exit
     mockExit = jest.spyOn(process, 'exit').mockImplementation(() => {
       throw new Error('process.exit called');
     });
-
-    // Mock console methods
     mockError = jest.spyOn(console, 'error').mockImplementation(() => {});
     mockLog = jest.spyOn(console, 'log').mockImplementation(() => {});
   });
@@ -32,79 +27,83 @@ describe('Launch Command', () => {
     mockLog.mockRestore();
   });
 
-  it('should exit when config not found', () => {
-    findConfig.mockReturnValue({ config: { configs: {} }, configPath: '/path/to/models.yaml', source: 'global' });
+  it('should exit when env config not found', () => {
+    findEnvConfig.mockReturnValue({ config: { envs: {} }, configPath: '/path/to/models.yaml', source: 'global' });
 
     expect(() => launchCommand('nonexistent')).toThrow('process.exit called');
-    expect(mockError).toHaveBeenCalledWith("Error: Configuration 'nonexistent' not found.");
+    expect(mockError).toHaveBeenCalledWith("Error: Env configuration 'nonexistent' not found.");
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 
-  it('should merge settings, write settings file, and spawn claude', () => {
-    const mockConfig = {
-      configs: {
-        test: {
-          model: 'gpt-4',
-          env: { ANTHROPIC_AUTH_TOKEN: 'sk-test-key', CUSTOM_VAR: 'custom-value' }
-        }
-      }
+  it('should spawn claude with env vars injected', () => {
+    const envVars = {
+      ANTHROPIC_BASE_URL: 'https://open.bigmodel.cn/api/paas/v4',
+      ANTHROPIC_AUTH_TOKEN: 'sk-test-key',
+      ANTHROPIC_MODEL: 'glm-4'
     };
+    const mockConfig = { envs: { glm4: envVars }, configs: {} };
 
-    findConfig.mockReturnValue({ config: mockConfig, configPath: '/path/to/models.yaml', source: 'global' });
-
-    const mergedSettings = { model: 'gpt-4', env: { ANTHROPIC_AUTH_TOKEN: 'sk-test-key', CUSTOM_VAR: 'custom-value' } };
-    mergeSettings.mockReturnValue(mergedSettings);
-    writeSettingsLocal.mockReturnValue('/project/.claude/settings.local.json');
+    findEnvConfig.mockReturnValue({ config: mockConfig, configPath: '/path/to/models.yaml', source: 'global' });
 
     const mockProcess = { on: jest.fn() };
     spawn.mockReturnValue(mockProcess);
 
-    // Set process.exit mock to not throw for this test
     mockExit.mockImplementation(() => {});
 
-    launchCommand('test');
+    launchCommand('glm4');
 
-    expect(mergeSettings).toHaveBeenCalledWith(mockConfig, 'test');
-    expect(writeSettingsLocal).toHaveBeenCalledWith(mergedSettings);
-    expect(spawn).toHaveBeenCalledWith(
-      'claude',
-      [],
-      { stdio: 'inherit', shell: true }
-    );
+    expect(findEnvConfig).toHaveBeenCalledWith('glm4', undefined);
+    expect(spawn).toHaveBeenCalledWith('claude', [], {
+      stdio: 'inherit',
+      shell: true,
+      env: expect.objectContaining(envVars)
+    });
+  });
+
+  it('should pass target path to findEnvConfig via -t flag', () => {
+    const envVars = { ANTHROPIC_AUTH_TOKEN: 'sk-test' };
+    const mockConfig = { envs: { glm4: envVars }, configs: {} };
+
+    findEnvConfig.mockReturnValue({ config: mockConfig, configPath: '/custom/models.yaml', source: 'custom' });
+
+    const mockProcess = { on: jest.fn() };
+    spawn.mockReturnValue(mockProcess);
+    mockExit.mockImplementation(() => {});
+
+    launchCommand('glm4', { target: '/custom/models.yaml' });
+
+    expect(findEnvConfig).toHaveBeenCalledWith('glm4', '/custom/models.yaml');
+  });
+
+  it('should show custom path in error message when source is custom', () => {
+    findEnvConfig.mockReturnValue({ config: { envs: {} }, configPath: '/custom/models.yaml', source: 'custom' });
+
+    expect(() => launchCommand('nonexistent', { target: '/custom/models.yaml' })).toThrow('process.exit called');
+    expect(mockError).toHaveBeenCalledWith("Error: Env configuration 'nonexistent' not found in '/custom/models.yaml'.");
   });
 
   it('should handle claude not installed error', () => {
     const mockConfig = {
-      configs: {
-        test: {
-          model: 'gpt-4',
-          env: { ANTHROPIC_AUTH_TOKEN: 'sk-test' }
-        }
-      }
+      envs: { test: { ANTHROPIC_AUTH_TOKEN: 'sk-test' } },
+      configs: {}
     };
 
-    findConfig.mockReturnValue({ config: mockConfig, configPath: '/path/to/models.yaml', source: 'global' });
-    mergeSettings.mockReturnValue({ model: 'gpt-4' });
-    writeSettingsLocal.mockReturnValue('/project/.claude/settings.local.json');
+    findEnvConfig.mockReturnValue({ config: mockConfig, configPath: '/path/to/models.yaml', source: 'global' });
 
     const mockProcess = { on: jest.fn() };
     spawn.mockReturnValue(mockProcess);
 
     launchCommand('test');
 
-    // Get the error handler
     const errorHandler = mockProcess.on.mock.calls.find(
       call => call[0] === 'error'
     )[1];
 
-    // Set exit to throw again
     mockExit.mockImplementation(() => {
       throw new Error('process.exit called');
     });
 
-    // Simulate ENOENT error
     expect(() => errorHandler({ code: 'ENOENT' })).toThrow('process.exit called');
-
     expect(mockError).toHaveBeenCalledWith('Error: Claude Code is not installed or not in PATH.');
     expect(mockExit).toHaveBeenCalledWith(1);
   });

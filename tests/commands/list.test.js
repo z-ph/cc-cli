@@ -24,21 +24,26 @@ describe('List Command', () => {
 
     listCommand();
 
-    expect(mockLog).toHaveBeenCalledWith('  No configurations found.');
+    expect(mockLog).toHaveBeenCalledWith('  No env configurations found.');
+    expect(mockLog).toHaveBeenCalledWith('  No settings configurations found.');
   });
 
-  it('should list configurations from local file', () => {
+  it('should list both envs and configs from local file', () => {
     loadConfig.mockReturnValue({
       settings: { alias: 'cc' },
-      base: {},
-      configs: {
+      envs: {
         glm4: {
-          model: 'glm-4',
-          env: { ANTHROPIC_BASE_URL: 'https://open.bigmodel.cn/api/paas/v4', ANTHROPIC_AUTH_TOKEN: 'sk-xxx' }
+          ANTHROPIC_BASE_URL: 'https://open.bigmodel.cn/api/paas/v4',
+          ANTHROPIC_AUTH_TOKEN: 'sk-xxx',
+          ANTHROPIC_MODEL: 'glm-4'
         },
         gpt4: {
-          model: 'gpt-4o',
-          env: {}
+          ANTHROPIC_MODEL: 'gpt-4o'
+        }
+      },
+      configs: {
+        strict: {
+          permissions: { allow: ['Read'] }
         }
       }
     });
@@ -49,21 +54,34 @@ describe('List Command', () => {
     listCommand();
 
     expect(mockLog).toHaveBeenCalledWith('  glm4');
-    expect(mockLog).toHaveBeenCalledWith('    model: glm-4');
-    expect(mockLog).toHaveBeenCalledWith('    env:   ANTHROPIC_BASE_URL, ANTHROPIC_AUTH_TOKEN');
     expect(mockLog).toHaveBeenCalledWith('  gpt4');
-    expect(mockLog).toHaveBeenCalledWith('Total: 2 configuration(s)');
+    expect(mockLog).toHaveBeenCalledWith('  strict');
+    expect(mockLog).toHaveBeenCalledWith(expect.stringContaining('Total: 2 env(s)'));
+    expect(mockLog).toHaveBeenCalledWith(expect.stringContaining('Total: 1 config(s)'));
+  });
+
+  it('should list configurations from custom path with -t flag', () => {
+    loadConfig.mockReturnValue({
+      settings: { alias: 'cc' },
+      envs: {
+        custom: { ANTHROPIC_MODEL: 'test-model' }
+      },
+      configs: {}
+    });
+
+    listCommand({ target: '/custom/path/models.yaml' });
+
+    expect(loadConfig).toHaveBeenCalledWith('/custom/path/models.yaml');
+    expect(mockLog).toHaveBeenCalledWith('Config file: /custom/path/models.yaml');
+    expect(mockLog).toHaveBeenCalledWith('  custom');
   });
 
   it('should list configurations from global with -g flag', () => {
     loadConfig.mockReturnValue({
       settings: { alias: 'cc' },
-      base: {},
+      envs: {},
       configs: {
-        test: {
-          model: 'model',
-          env: {}
-        }
+        test: { permissions: { allow: ['Read'] } }
       }
     });
 
@@ -73,25 +91,5 @@ describe('List Command', () => {
 
     expect(loadConfig).toHaveBeenCalled();
     expect(mockLog).toHaveBeenCalledWith('  test');
-  });
-
-  it('should not show env section when no env vars', () => {
-    loadConfig.mockReturnValue({
-      settings: { alias: 'cc' },
-      base: {},
-      configs: {
-        test: {
-          model: 'model'
-        }
-      }
-    });
-
-    getLocalConfigPath.mockReturnValue('/project/.claude/models.yaml');
-    fs.existsSync.mockReturnValue(true);
-
-    listCommand();
-
-    const calls = mockLog.mock.calls.flat();
-    expect(calls.some(call => call && call.includes && call.includes('env:'))).toBe(false);
   });
 });

@@ -30,6 +30,36 @@ describe('Alias Command', () => {
     expect(mockLog).toHaveBeenCalledWith('Usage: cc alias <name>');
   });
 
+  it('should use custom config path with -t flag', () => {
+    const mockConfig = {
+      settings: { alias: 'cc' },
+      base: {},
+      configs: {}
+    };
+
+    loadConfig.mockReturnValue(mockConfig);
+    saveConfig.mockImplementation(() => {});
+
+    aliasCommand('cl', { target: '/custom/models.yaml' });
+
+    expect(loadConfig).toHaveBeenCalledWith('/custom/models.yaml');
+    expect(saveConfig).toHaveBeenCalledWith(mockConfig, '/custom/models.yaml');
+    expect(mockConfig.settings.alias).toBe('cl');
+  });
+
+  it('should show config path with -t flag when no argument', () => {
+    loadConfig.mockReturnValue({
+      settings: { alias: 'cc' },
+      base: {},
+      configs: {}
+    });
+
+    aliasCommand(undefined, { target: '/custom/models.yaml' });
+
+    expect(loadConfig).toHaveBeenCalledWith('/custom/models.yaml');
+    expect(mockLog).toHaveBeenCalledWith('Config file: /custom/models.yaml');
+  });
+
   it('should change alias', () => {
     const mockConfig = {
       settings: { alias: 'cc' },

@@ -2,11 +2,11 @@
 jest.mock('../../src/config/loader');
 jest.mock('fs');
 
-const { removeCommand } = require('../../src/commands/remove');
-const { loadConfig, getLocalConfigPath, getGlobalConfigPath } = require('../../src/config/loader');
+const { removeConfigCommand } = require('../../src/commands/remove-config');
+const { loadConfig, saveConfig, getLocalConfigPath, getGlobalConfigPath } = require('../../src/config/loader');
 const fs = require('fs');
 
-describe('Remove Command', () => {
+describe('Remove Config Command', () => {
   let mockError;
   let mockLog;
   let mockExit;
@@ -26,75 +26,72 @@ describe('Remove Command', () => {
     mockExit.mockRestore();
   });
 
-  it('should remove existing env from local config', () => {
+  it('should remove config from local by default', () => {
     const mockConfig = {
       settings: { alias: 'cc' },
-      envs: {
-        test: { ANTHROPIC_BASE_URL: 'https://example.com', ANTHROPIC_AUTH_TOKEN: 'key' }
-      },
-      configs: {}
+      envs: {},
+      configs: {
+        strict: { permissions: { allow: ['Read'] } }
+      }
     };
 
     getLocalConfigPath.mockReturnValue('/project/.claude/models.yaml');
     fs.existsSync.mockReturnValue(true);
     loadConfig.mockReturnValue(mockConfig);
-    const { saveConfig } = require('../../src/config/loader');
     saveConfig.mockImplementation(() => {});
 
     mockExit.mockImplementation(() => {});
 
-    removeCommand('test');
+    removeConfigCommand('strict');
 
-    expect(mockConfig.envs.test).toBeUndefined();
+    expect(mockConfig.configs.strict).toBeUndefined();
     expect(saveConfig).toHaveBeenCalledWith(mockConfig, '/project/.claude/models.yaml');
-    expect(mockLog).toHaveBeenCalledWith(expect.stringContaining('test'));
+    expect(mockLog).toHaveBeenCalledWith(expect.stringContaining('strict'));
   });
 
-  it('should remove existing env from global with -g flag', () => {
+  it('should remove config from global with -g flag', () => {
     const mockConfig = {
       settings: { alias: 'cc' },
-      envs: {
-        test: { ANTHROPIC_MODEL: 'gpt-4' }
-      },
-      configs: {}
+      envs: {},
+      configs: {
+        strict: { permissions: { allow: ['Read'] } }
+      }
     };
 
     getGlobalConfigPath.mockReturnValue('/home/user/.claude/models.yaml');
     loadConfig.mockReturnValue(mockConfig);
-    const { saveConfig } = require('../../src/config/loader');
     saveConfig.mockImplementation(() => {});
 
     mockExit.mockImplementation(() => {});
 
-    removeCommand('test', { global: true });
+    removeConfigCommand('strict', { global: true });
 
-    expect(mockConfig.envs.test).toBeUndefined();
+    expect(mockConfig.configs.strict).toBeUndefined();
     expect(saveConfig).toHaveBeenCalledWith(mockConfig, '/home/user/.claude/models.yaml');
   });
 
-  it('should remove env from custom path with -t flag', () => {
+  it('should remove config from custom path with -t flag', () => {
     const mockConfig = {
       settings: { alias: 'cc' },
-      envs: {
-        test: { ANTHROPIC_MODEL: 'gpt-4' }
-      },
-      configs: {}
+      envs: {},
+      configs: {
+        strict: { permissions: { allow: ['Read'] } }
+      }
     };
 
     loadConfig.mockReturnValue(mockConfig);
-    const { saveConfig } = require('../../src/config/loader');
     saveConfig.mockImplementation(() => {});
 
     mockExit.mockImplementation(() => {});
 
-    removeCommand('test', { target: '/custom/models.yaml' });
+    removeConfigCommand('strict', { target: '/custom/models.yaml' });
 
     expect(loadConfig).toHaveBeenCalledWith('/custom/models.yaml');
-    expect(mockConfig.envs.test).toBeUndefined();
+    expect(mockConfig.configs.strict).toBeUndefined();
     expect(saveConfig).toHaveBeenCalledWith(mockConfig, '/custom/models.yaml');
   });
 
-  it('should exit when env not found', () => {
+  it('should exit when config not found', () => {
     const mockConfig = {
       settings: { alias: 'cc' },
       envs: {},
@@ -105,7 +102,7 @@ describe('Remove Command', () => {
     fs.existsSync.mockReturnValue(true);
     loadConfig.mockReturnValue(mockConfig);
 
-    expect(() => removeCommand('nonexistent')).toThrow('process.exit called');
+    expect(() => removeConfigCommand('nonexistent')).toThrow('process.exit called');
     expect(mockError).toHaveBeenCalledWith(expect.stringContaining('nonexistent'));
     expect(mockExit).toHaveBeenCalledWith(1);
   });
