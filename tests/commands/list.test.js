@@ -1,8 +1,10 @@
 // Set up mock before importing
 jest.mock('../../src/config/loader');
+jest.mock('fs');
 
 const { listCommand } = require('../../src/commands/list');
-const { loadConfig } = require('../../src/config/loader');
+const { loadConfig, getLocalConfigPath, getGlobalConfigPath } = require('../../src/config/loader');
+const fs = require('fs');
 
 describe('List Command', () => {
   let mockLog;
@@ -17,19 +19,16 @@ describe('List Command', () => {
   });
 
   it('should show message when no configurations exist', () => {
-    loadConfig.mockReturnValue({
-      settings: { alias: 'cc' },
-      models: {}
-    });
+    getLocalConfigPath.mockReturnValue('/project/.claude/models.yaml');
+    fs.existsSync.mockReturnValue(false);
 
     listCommand();
 
     expect(mockLog).toHaveBeenCalledWith('Available configurations:\n');
     expect(mockLog).toHaveBeenCalledWith('  No configurations found.');
-    expect(mockLog).toHaveBeenCalledWith('  Run "cc add <config-id>" to create one.');
   });
 
-  it('should list all configurations', () => {
+  it('should list configurations from local file', () => {
     loadConfig.mockReturnValue({
       settings: { alias: 'cc' },
       models: {
@@ -48,6 +47,9 @@ describe('List Command', () => {
       }
     });
 
+    getLocalConfigPath.mockReturnValue('/project/.claude/models.yaml');
+    fs.existsSync.mockReturnValue(true);
+
     listCommand();
 
     expect(mockLog).toHaveBeenCalledWith('Available configurations:\n');
@@ -57,6 +59,27 @@ describe('List Command', () => {
     expect(mockLog).toHaveBeenCalledWith('    env:     ANTHROPIC_BASE_URL');
     expect(mockLog).toHaveBeenCalledWith('  gpt4');
     expect(mockLog).toHaveBeenCalledWith('Total: 2 configuration(s)');
+  });
+
+  it('should list configurations from global with -g flag', () => {
+    loadConfig.mockReturnValue({
+      settings: { alias: 'cc' },
+      models: {
+        test: {
+          base_url: 'https://api.example.com',
+          api_key: 'sk-xxx',
+          model: 'model',
+          env: {}
+        }
+      }
+    });
+
+    getGlobalConfigPath.mockReturnValue('/home/user/.claude/models.yaml');
+
+    listCommand({ global: true });
+
+    expect(loadConfig).toHaveBeenCalled();
+    expect(mockLog).toHaveBeenCalledWith('  test');
   });
 
   it('should not show env section when no env vars', () => {
@@ -71,6 +94,9 @@ describe('List Command', () => {
         }
       }
     });
+
+    getLocalConfigPath.mockReturnValue('/project/.claude/models.yaml');
+    fs.existsSync.mockReturnValue(true);
 
     listCommand();
 

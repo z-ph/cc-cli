@@ -1,8 +1,10 @@
 // Set up mock before importing
 jest.mock('../../src/config/loader');
+jest.mock('fs');
 
 const { removeCommand } = require('../../src/commands/remove');
-const { loadConfig, saveConfig, findConfig } = require('../../src/config/loader');
+const { loadConfig, saveConfig, getLocalConfigPath, getGlobalConfigPath } = require('../../src/config/loader');
+const fs = require('fs');
 
 describe('Remove Command', () => {
   let mockError;
@@ -24,7 +26,7 @@ describe('Remove Command', () => {
     mockExit.mockRestore();
   });
 
-  it('should remove existing configuration', () => {
+  it('should remove existing configuration from local', () => {
     const mockConfig = {
       settings: { alias: 'cc' },
       models: {
@@ -32,25 +34,54 @@ describe('Remove Command', () => {
       }
     };
 
-    findConfig.mockReturnValue({ config: mockConfig, configPath: '/path/to/models.yaml', source: 'global' });
+    getLocalConfigPath.mockReturnValue('/project/.claude/models.yaml');
+    getGlobalConfigPath.mockReturnValue('/home/user/.claude/models.yaml');
+    fs.existsSync.mockReturnValue(true);
+    loadConfig.mockReturnValue(mockConfig);
     saveConfig.mockImplementation(() => {});
 
-    // Don't throw on exit for this test
     mockExit.mockImplementation(() => {});
 
     removeCommand('test');
 
     expect(mockConfig.models.test).toBeUndefined();
-    expect(saveConfig).toHaveBeenCalledWith(mockConfig, '/path/to/models.yaml');
-    expect(mockLog).toHaveBeenCalledWith("Configuration 'test' removed successfully from '/path/to/models.yaml'.");
+    expect(saveConfig).toHaveBeenCalledWith(mockConfig, '/project/.claude/models.yaml');
+    expect(mockLog).toHaveBeenCalledWith("Configuration 'test' removed successfully from '/project/.claude/models.yaml'.");
+  });
+
+  it('should remove existing configuration from global with -g flag', () => {
+    const mockConfig = {
+      settings: { alias: 'cc' },
+      models: {
+        test: { base_url: 'http://test.com', api_key: 'key', model: 'model' }
+      }
+    };
+
+    getGlobalConfigPath.mockReturnValue('/home/user/.claude/models.yaml');
+    loadConfig.mockReturnValue(mockConfig);
+    saveConfig.mockImplementation(() => {});
+
+    mockExit.mockImplementation(() => {});
+
+    removeCommand('test', { global: true });
+
+    expect(mockConfig.models.test).toBeUndefined();
+    expect(saveConfig).toHaveBeenCalledWith(mockConfig, '/home/user/.claude/models.yaml');
   });
 
   it('should exit when config not found', () => {
-    findConfig.mockReturnValue({ config: null, configPath: null, source: null });
+    const mockConfig = {
+      settings: { alias: 'cc' },
+      models: {}
+    };
+
+    getLocalConfigPath.mockReturnValue('/project/.claude/models.yaml');
+    fs.existsSync.mockReturnValue(true);
+    loadConfig.mockReturnValue(mockConfig);
 
     expect(() => removeCommand('nonexistent')).toThrow('process.exit called');
 
-    expect(mockError).toHaveBeenCalledWith("Error: Configuration 'nonexistent' not found.");
+    expect(mockError).toHaveBeenCalledWith("Error: Configuration 'nonexistent' not found in '/project/.claude/models.yaml'.");
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 });
