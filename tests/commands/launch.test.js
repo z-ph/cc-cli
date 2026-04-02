@@ -3,7 +3,7 @@ jest.mock('../../src/config/loader');
 jest.mock('child_process');
 
 const { launchCommand } = require('../../src/commands/launch');
-const { loadConfig } = require('../../src/config/loader');
+const { findConfig } = require('../../src/config/loader');
 const { spawn } = require('child_process');
 
 describe('Launch Command', () => {
@@ -31,7 +31,7 @@ describe('Launch Command', () => {
   });
 
   it('should exit when config not found', () => {
-    loadConfig.mockReturnValue({ models: {} });
+    findConfig.mockReturnValue({ config: { models: {} }, configPath: '/path/to/models.yaml', source: 'global' });
 
     expect(() => launchCommand('nonexistent')).toThrow('process.exit called');
     expect(mockError).toHaveBeenCalledWith("Error: Configuration 'nonexistent' not found.");
@@ -42,15 +42,15 @@ describe('Launch Command', () => {
     const mockConfig = {
       models: {
         test: {
-          baseurl: 'https://api.example.com',
-          apikey: 'sk-test-key',
+          base_url: 'https://api.example.com',
+          api_key: 'sk-test-key',
           model: 'gpt-4',
           env: { CUSTOM_VAR: 'custom-value' }
         }
       }
     };
 
-    loadConfig.mockReturnValue(mockConfig);
+    findConfig.mockReturnValue({ config: mockConfig, configPath: '/path/to/models.yaml', source: 'global' });
 
     const mockProcess = {
       on: jest.fn()
@@ -82,15 +82,15 @@ describe('Launch Command', () => {
     const mockConfig = {
       models: {
         test: {
-          baseurl: 'https://api.example.com',
-          apikey: 'sk-test',
+          base_url: 'https://api.example.com',
+          api_key: 'sk-test',
           model: 'gpt-4',
           env: {}
         }
       }
     };
 
-    loadConfig.mockReturnValue(mockConfig);
+    findConfig.mockReturnValue({ config: mockConfig, configPath: '/path/to/models.yaml', source: 'global' });
 
     const mockProcess = { on: jest.fn() };
     spawn.mockReturnValue(mockProcess);

@@ -2,7 +2,7 @@
 jest.mock('../../src/config/loader');
 
 const { removeCommand } = require('../../src/commands/remove');
-const { loadConfig, saveConfig } = require('../../src/config/loader');
+const { loadConfig, saveConfig, findConfig } = require('../../src/config/loader');
 
 describe('Remove Command', () => {
   let mockError;
@@ -28,11 +28,11 @@ describe('Remove Command', () => {
     const mockConfig = {
       settings: { alias: 'cc' },
       models: {
-        test: { baseurl: 'http://test.com', apikey: 'key', model: 'model' }
+        test: { base_url: 'http://test.com', api_key: 'key', model: 'model' }
       }
     };
 
-    loadConfig.mockReturnValue(mockConfig);
+    findConfig.mockReturnValue({ config: mockConfig, configPath: '/path/to/models.yaml', source: 'global' });
     saveConfig.mockImplementation(() => {});
 
     // Don't throw on exit for this test
@@ -41,15 +41,12 @@ describe('Remove Command', () => {
     removeCommand('test');
 
     expect(mockConfig.models.test).toBeUndefined();
-    expect(saveConfig).toHaveBeenCalledWith(mockConfig);
-    expect(mockLog).toHaveBeenCalledWith("Configuration 'test' removed successfully.");
+    expect(saveConfig).toHaveBeenCalledWith(mockConfig, '/path/to/models.yaml');
+    expect(mockLog).toHaveBeenCalledWith("Configuration 'test' removed successfully from '/path/to/models.yaml'.");
   });
 
   it('should exit when config not found', () => {
-    loadConfig.mockReturnValue({
-      settings: { alias: 'cc' },
-      models: {}
-    });
+    findConfig.mockReturnValue({ config: null, configPath: null, source: null });
 
     expect(() => removeCommand('nonexistent')).toThrow('process.exit called');
 

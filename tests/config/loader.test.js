@@ -53,7 +53,7 @@ describe('Config Loader', () => {
 
       const mockConfig = {
         settings: { alias: 'cl' },
-        models: { test: { baseurl: 'http://test.com', apikey: 'key', model: 'model' } }
+        models: { test: { base_url: 'http://test.com', api_key: 'key', model: 'model' } }
       };
 
       existsSync
@@ -66,7 +66,7 @@ describe('Config Loader', () => {
 
       expect(readFileSync).toHaveBeenCalledWith(CONFIG_PATH, 'utf8');
       expect(config.settings.alias).toBe('cl');
-      expect(config.models.test.baseurl).toBe('http://test.com');
+      expect(config.models.test.base_url).toBe('http://test.com');
     });
   });
 
@@ -78,7 +78,7 @@ describe('Config Loader', () => {
 
       const config = {
         settings: { alias: 'cc' },
-        models: { test: { baseurl: 'http://test.com', apikey: 'key', model: 'model' } }
+        models: { test: { base_url: 'http://test.com', api_key: 'key', model: 'model' } }
       };
 
       saveConfig(config);

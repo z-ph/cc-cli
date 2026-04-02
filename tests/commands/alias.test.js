@@ -2,7 +2,7 @@
 jest.mock('../../src/config/loader');
 
 const { aliasCommand } = require('../../src/commands/alias');
-const { loadConfig, saveConfig } = require('../../src/config/loader');
+const { loadConfig, saveConfig, getGlobalConfigPath } = require('../../src/config/loader');
 
 describe('Alias Command', () => {
   let mockLog;
@@ -40,7 +40,7 @@ describe('Alias Command', () => {
     aliasCommand('cl');
 
     expect(mockConfig.settings.alias).toBe('cl');
-    expect(saveConfig).toHaveBeenCalledWith(mockConfig);
+    expect(saveConfig).toHaveBeenCalledWith(mockConfig, getGlobalConfigPath());
     expect(mockLog).toHaveBeenCalledWith("Alias changed from 'cc' to 'cl'");
   });
 });

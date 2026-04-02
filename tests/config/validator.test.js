@@ -4,8 +4,8 @@ describe('Config Validator', () => {
   describe('validateModelConfig', () => {
     it('should pass valid config', () => {
       const config = {
-        baseurl: 'https://api.example.com',
-        apikey: 'sk-test',
+        base_url: 'https://api.example.com',
+        api_key: 'sk-test',
         model: 'gpt-4'
       };
 
@@ -15,34 +15,34 @@ describe('Config Validator', () => {
       expect(result.errors).toEqual([]);
     });
 
-    it('should fail when baseurl is missing', () => {
+    it('should fail when base_url is missing', () => {
       const config = {
-        apikey: 'sk-test',
+        api_key: 'sk-test',
         model: 'gpt-4'
       };
 
       const result = validateModelConfig(config);
 
       expect(result.valid).toBe(false);
-      expect(result.errors).toContain('baseurl');
+      expect(result.errors).toContain('base_url');
     });
 
-    it('should fail when apikey is missing', () => {
+    it('should fail when api_key is missing', () => {
       const config = {
-        baseurl: 'https://api.example.com',
+        base_url: 'https://api.example.com',
         model: 'gpt-4'
       };
 
       const result = validateModelConfig(config);
 
       expect(result.valid).toBe(false);
-      expect(result.errors).toContain('apikey');
+      expect(result.errors).toContain('api_key');
     });
 
     it('should fail when model is missing', () => {
       const config = {
-        baseurl: 'https://api.example.com',
-        apikey: 'sk-test'
+        base_url: 'https://api.example.com',
+        api_key: 'sk-test'
       };
 
       const result = validateModelConfig(config);
@@ -53,8 +53,8 @@ describe('Config Validator', () => {
 
     it('should add empty env object if not provided', () => {
       const config = {
-        baseurl: 'https://api.example.com',
-        apikey: 'sk-test',
+        base_url: 'https://api.example.com',
+        api_key: 'sk-test',
         model: 'gpt-4'
       };
 
@@ -66,7 +66,7 @@ describe('Config Validator', () => {
 
   describe('validateConfigId', () => {
     const existingModels = {
-      existing: { baseurl: 'http://test.com', apikey: 'key', model: 'model' }
+      existing: { base_url: 'http://test.com', api_key: 'key', model: 'model' }
     };
 
     it('should pass valid config ID', () => {

@@ -34,14 +34,14 @@ describe('List Command', () => {
       settings: { alias: 'cc' },
       models: {
         glm4: {
-          baseurl: 'https://open.bigmodel.cn/api/paas/v4',
-          apikey: 'sk-xxx',
+          base_url: 'https://open.bigmodel.cn/api/paas/v4',
+          api_key: 'sk-xxx',
           model: 'glm-4',
           env: { ANTHROPIC_BASE_URL: 'https://open.bigmodel.cn/api/paas/v4' }
         },
         gpt4: {
-          baseurl: 'https://api.openai.com/v1',
-          apikey: 'sk-xxx',
+          base_url: 'https://api.openai.com/v1',
+          api_key: 'sk-xxx',
           model: 'gpt-4o',
           env: {}
         }
@@ -52,7 +52,7 @@ describe('List Command', () => {
 
     expect(mockLog).toHaveBeenCalledWith('Available configurations:\n');
     expect(mockLog).toHaveBeenCalledWith('  glm4');
-    expect(mockLog).toHaveBeenCalledWith('    baseurl: https://open.bigmodel.cn/api/paas/v4');
+    expect(mockLog).toHaveBeenCalledWith('    base_url: https://open.bigmodel.cn/api/paas/v4');
     expect(mockLog).toHaveBeenCalledWith('    model:   glm-4');
     expect(mockLog).toHaveBeenCalledWith('    env:     ANTHROPIC_BASE_URL');
     expect(mockLog).toHaveBeenCalledWith('  gpt4');
@@ -64,8 +64,8 @@ describe('List Command', () => {
       settings: { alias: 'cc' },
       models: {
         test: {
-          baseurl: 'https://api.example.com',
-          apikey: 'sk-xxx',
+          base_url: 'https://api.example.com',
+          api_key: 'sk-xxx',
           model: 'model',
           env: {}
         }
