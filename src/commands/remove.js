@@ -24,12 +24,12 @@ function removeCommand(configId, options = {}) {
     }
   }
 
-  if (!config || !config.models[configId]) {
+  if (!config || !config.configs || !config.configs[configId]) {
     console.error(`Error: Configuration '${configId}' not found in '${configPath}'.`);
     process.exit(1);
   }
 
-  delete config.models[configId];
+  delete config.configs[configId];
   saveConfig(config, configPath);
 
   console.log(`Configuration '${configId}' removed successfully from '${configPath}'.`);

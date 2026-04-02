@@ -19,7 +19,8 @@ describe('Alias Command', () => {
   it('should show current alias when no argument provided', () => {
     loadConfig.mockReturnValue({
       settings: { alias: 'cc' },
-      models: {}
+      base: {},
+      configs: {}
     });
     getGlobalConfigPath.mockReturnValue('/home/user/.claude/models.yaml');
 
@@ -32,7 +33,8 @@ describe('Alias Command', () => {
   it('should change alias', () => {
     const mockConfig = {
       settings: { alias: 'cc' },
-      models: {}
+      base: {},
+      configs: {}
     };
 
     loadConfig.mockReturnValue(mockConfig);

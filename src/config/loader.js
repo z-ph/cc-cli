@@ -12,7 +12,8 @@ const DEFAULT_CONFIG = {
   settings: {
     alias: 'cc'
   },
-  models: {}
+  base: {},
+  configs: {}
 };
 
 function getLocalConfigPath() {
@@ -38,7 +39,7 @@ function findConfig(configId, customConfigPath) {
   const localPath = getLocalConfigPath();
   if (fs.existsSync(localPath)) {
     const config = yaml.load(fs.readFileSync(localPath, 'utf8'));
-    if (config.models && config.models[configId]) {
+    if (config.configs && config.configs[configId]) {
       return { config, configPath: localPath, source: 'local' };
     }
   }
@@ -46,7 +47,7 @@ function findConfig(configId, customConfigPath) {
   // Priority 3: Global config (~/.claude/models.yaml)
   if (fs.existsSync(GLOBAL_CONFIG_PATH)) {
     const config = yaml.load(fs.readFileSync(GLOBAL_CONFIG_PATH, 'utf8'));
-    if (config.models && config.models[configId]) {
+    if (config.configs && config.configs[configId]) {
       return { config, configPath: GLOBAL_CONFIG_PATH, source: 'global' };
     }
   }

@@ -1,96 +1,72 @@
-const { validateModelConfig, validateConfigId } = require('../../src/config/validator');
+const { validateConfigEntry, validateConfigId } = require('../../src/config/validator');
 
 describe('Config Validator', () => {
-  describe('validateModelConfig', () => {
-    it('should pass valid config', () => {
-      const config = {
-        base_url: 'https://api.example.com',
-        api_key: 'sk-test',
-        model: 'gpt-4'
+  describe('validateConfigEntry', () => {
+    it('should pass valid entry with model and env', () => {
+      const entry = {
+        model: 'gpt-4',
+        env: { ANTHROPIC_AUTH_TOKEN: 'sk-test' }
       };
 
-      const result = validateModelConfig(config);
+      const result = validateConfigEntry(entry);
 
       expect(result.valid).toBe(true);
-      expect(result.errors).toEqual([]);
     });
 
-    it('should fail when base_url is missing', () => {
-      const config = {
-        api_key: 'sk-test',
-        model: 'gpt-4'
-      };
+    it('should pass valid entry with only model', () => {
+      const entry = { model: 'gpt-4' };
 
-      const result = validateModelConfig(config);
-
-      expect(result.valid).toBe(false);
-      expect(result.errors).toContain('base_url');
-    });
-
-    it('should fail when api_key is missing', () => {
-      const config = {
-        base_url: 'https://api.example.com',
-        model: 'gpt-4'
-      };
-
-      const result = validateModelConfig(config);
-
-      expect(result.valid).toBe(false);
-      expect(result.errors).toContain('api_key');
-    });
-
-    it('should pass when model is missing (uses Claude Code default)', () => {
-      const config = {
-        base_url: 'https://api.example.com',
-        api_key: 'sk-test'
-      };
-
-      const result = validateModelConfig(config);
+      const result = validateConfigEntry(entry);
 
       expect(result.valid).toBe(true);
-      expect(result.errors).toEqual([]);
     });
 
-    it('should add empty env object if not provided', () => {
-      const config = {
-        base_url: 'https://api.example.com',
-        api_key: 'sk-test',
-        model: 'gpt-4'
-      };
+    it('should pass empty object', () => {
+      const result = validateConfigEntry({});
 
-      validateModelConfig(config);
+      expect(result.valid).toBe(true);
+    });
 
-      expect(config.env).toEqual({});
+    it('should fail when entry is null', () => {
+      const result = validateConfigEntry(null);
+
+      expect(result.valid).toBe(false);
+    });
+
+    it('should fail when entry is an array', () => {
+      const result = validateConfigEntry([]);
+
+      expect(result.valid).toBe(false);
     });
   });
 
   describe('validateConfigId', () => {
-    const existingModels = {
-      existing: { base_url: 'http://test.com', api_key: 'key', model: 'model' }
+    const existingConfigs = {
+      existing: { model: 'gpt-4' }
     };
 
     it('should pass valid config ID', () => {
-      const result = validateConfigId('new-config', existingModels);
+      const result = validateConfigId('new-config', existingConfigs);
 
       expect(result.valid).toBe(true);
     });
 
     it('should fail when config ID is empty', () => {
-      const result = validateConfigId('', existingModels);
+      const result = validateConfigId('', existingConfigs);
 
       expect(result.valid).toBe(false);
       expect(result.error).toBe('Config ID is required');
     });
 
     it('should fail when config ID already exists', () => {
-      const result = validateConfigId('existing', existingModels);
+      const result = validateConfigId('existing', existingConfigs);
 
       expect(result.valid).toBe(false);
       expect(result.error).toContain('already exists');
     });
 
     it('should fail when config ID has invalid characters', () => {
-      const result = validateConfigId('invalid@id', existingModels);
+      const result = validateConfigId('invalid@id', existingConfigs);
 
       expect(result.valid).toBe(false);
       expect(result.error).toContain('can only contain');
@@ -100,7 +76,7 @@ describe('Config Validator', () => {
       const validIds = ['abc123', 'my.config', 'my_config', 'my-config', 'ABC'];
 
       validIds.forEach(id => {
-        const result = validateConfigId(id, existingModels);
+        const result = validateConfigId(id, existingConfigs);
         expect(result.valid).toBe(true);
       });
     });

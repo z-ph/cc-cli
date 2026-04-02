@@ -29,8 +29,9 @@ describe('Remove Command', () => {
   it('should remove existing configuration from local', () => {
     const mockConfig = {
       settings: { alias: 'cc' },
-      models: {
-        test: { base_url: 'http://test.com', api_key: 'key', model: 'model' }
+      base: {},
+      configs: {
+        test: { model: 'gpt-4', env: { ANTHROPIC_AUTH_TOKEN: 'key' } }
       }
     };
 
@@ -44,7 +45,7 @@ describe('Remove Command', () => {
 
     removeCommand('test');
 
-    expect(mockConfig.models.test).toBeUndefined();
+    expect(mockConfig.configs.test).toBeUndefined();
     expect(saveConfig).toHaveBeenCalledWith(mockConfig, '/project/.claude/models.yaml');
     expect(mockLog).toHaveBeenCalledWith("Configuration 'test' removed successfully from '/project/.claude/models.yaml'.");
   });
@@ -52,8 +53,9 @@ describe('Remove Command', () => {
   it('should remove existing configuration from global with -g flag', () => {
     const mockConfig = {
       settings: { alias: 'cc' },
-      models: {
-        test: { base_url: 'http://test.com', api_key: 'key', model: 'model' }
+      base: {},
+      configs: {
+        test: { model: 'gpt-4', env: { ANTHROPIC_AUTH_TOKEN: 'key' } }
       }
     };
 
@@ -65,14 +67,15 @@ describe('Remove Command', () => {
 
     removeCommand('test', { global: true });
 
-    expect(mockConfig.models.test).toBeUndefined();
+    expect(mockConfig.configs.test).toBeUndefined();
     expect(saveConfig).toHaveBeenCalledWith(mockConfig, '/home/user/.claude/models.yaml');
   });
 
   it('should exit when config not found', () => {
     const mockConfig = {
       settings: { alias: 'cc' },
-      models: {}
+      base: {},
+      configs: {}
     };
 
     getLocalConfigPath.mockReturnValue('/project/.claude/models.yaml');

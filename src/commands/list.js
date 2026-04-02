@@ -18,34 +18,56 @@ function listCommand(options = {}) {
     if (fs.existsSync(configPath)) {
       config = loadConfig(configPath);
     } else {
-      config = { settings: { alias: 'cc' }, models: {} };
+      config = { settings: { alias: 'cc' }, base: {}, configs: {} };
     }
   }
 
   console.log(`Config file: ${configPath}`);
-  console.log('Available configurations:\n');
 
-  const modelIds = Object.keys(config.models || {});
+  // Show base config if present
+  const base = config.base || {};
+  const baseKeys = Object.keys(base);
+  if (baseKeys.length > 0) {
+    console.log('\nBase defaults:');
+    for (const key of baseKeys) {
+      if (key === 'env') {
+        const envKeys = Object.keys(base.env || {});
+        console.log(`  env: ${envKeys.join(', ')}`);
+      } else {
+        console.log(`  ${key}: ${JSON.stringify(base[key])}`);
+      }
+    }
+  }
 
-  if (modelIds.length === 0) {
+  console.log('\nAvailable configurations:\n');
+
+  const configIds = Object.keys(config.configs || {});
+
+  if (configIds.length === 0) {
     console.log('  No configurations found.');
     console.log('  Run "cc add <config-id>" to create one.');
     return;
   }
 
-  for (const id of modelIds) {
-    const model = config.models[id];
+  for (const id of configIds) {
+    const entry = config.configs[id];
     console.log(`  ${id}`);
-    console.log(`    base_url: ${model.base_url}`);
-    console.log(`    model:   ${model.model}`);
-    const envKeys = Object.keys(model.env || {});
+    if (entry.model) {
+      console.log(`    model: ${entry.model}`);
+    }
+    const envKeys = Object.keys(entry.env || {});
     if (envKeys.length > 0) {
-      console.log(`    env:     ${envKeys.join(', ')}`);
+      console.log(`    env:   ${envKeys.join(', ')}`);
+    }
+    // Show brief summary of other settings
+    const otherKeys = Object.keys(entry).filter(k => k !== 'model' && k !== 'env');
+    if (otherKeys.length > 0) {
+      console.log(`    other: ${otherKeys.join(', ')}`);
     }
     console.log();
   }
 
-  console.log(`Total: ${modelIds.length} configuration(s)`);
+  console.log(`Total: ${configIds.length} configuration(s)`);
 }
 
 module.exports = { listCommand };

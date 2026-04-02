@@ -1,10 +1,11 @@
 const { spawn } = require('child_process');
 const { findConfig } = require('../config/loader');
+const { mergeSettings, writeSettingsLocal } = require('../config/merger');
 
 function launchCommand(configId, options) {
   const { config, configPath, source } = findConfig(configId, options?.target);
 
-  if (!config || !config.models[configId]) {
+  if (!config || !config.configs || !config.configs[configId]) {
     if (source === 'custom') {
       console.error(`Error: Configuration '${configId}' not found in '${configPath}'.`);
     } else {
@@ -17,24 +18,17 @@ function launchCommand(configId, options) {
     process.exit(1);
   }
 
-  const modelConfig = config.models[configId];
-
   if (source) {
     console.log(`Using configuration from: ${configPath}`);
   }
 
-  // Build environment variables
-  const env = {
-    ...process.env,
-    ANTHROPIC_BASE_URL: modelConfig.base_url,
-    ANTHROPIC_AUTH_TOKEN: modelConfig.api_key,
-    ANTHROPIC_MODEL: modelConfig.model,
-    ...modelConfig.env
-  };
+  // Merge base + config, write to settings.local.json
+  const merged = mergeSettings(config, configId);
+  const settingsPath = writeSettingsLocal(merged);
+  console.log(`Settings written to: ${settingsPath}`);
 
-  // Spawn claude process
+  // Spawn claude process (settings file provides all configuration)
   const claudeProcess = spawn('claude', [], {
-    env,
     stdio: 'inherit',
     shell: true
   });

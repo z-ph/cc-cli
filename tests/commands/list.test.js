@@ -24,23 +24,19 @@ describe('List Command', () => {
 
     listCommand();
 
-    expect(mockLog).toHaveBeenCalledWith('Available configurations:\n');
     expect(mockLog).toHaveBeenCalledWith('  No configurations found.');
   });
 
   it('should list configurations from local file', () => {
     loadConfig.mockReturnValue({
       settings: { alias: 'cc' },
-      models: {
+      base: {},
+      configs: {
         glm4: {
-          base_url: 'https://open.bigmodel.cn/api/paas/v4',
-          api_key: 'sk-xxx',
           model: 'glm-4',
-          env: { ANTHROPIC_BASE_URL: 'https://open.bigmodel.cn/api/paas/v4' }
+          env: { ANTHROPIC_BASE_URL: 'https://open.bigmodel.cn/api/paas/v4', ANTHROPIC_AUTH_TOKEN: 'sk-xxx' }
         },
         gpt4: {
-          base_url: 'https://api.openai.com/v1',
-          api_key: 'sk-xxx',
           model: 'gpt-4o',
           env: {}
         }
@@ -52,11 +48,9 @@ describe('List Command', () => {
 
     listCommand();
 
-    expect(mockLog).toHaveBeenCalledWith('Available configurations:\n');
     expect(mockLog).toHaveBeenCalledWith('  glm4');
-    expect(mockLog).toHaveBeenCalledWith('    base_url: https://open.bigmodel.cn/api/paas/v4');
-    expect(mockLog).toHaveBeenCalledWith('    model:   glm-4');
-    expect(mockLog).toHaveBeenCalledWith('    env:     ANTHROPIC_BASE_URL');
+    expect(mockLog).toHaveBeenCalledWith('    model: glm-4');
+    expect(mockLog).toHaveBeenCalledWith('    env:   ANTHROPIC_BASE_URL, ANTHROPIC_AUTH_TOKEN');
     expect(mockLog).toHaveBeenCalledWith('  gpt4');
     expect(mockLog).toHaveBeenCalledWith('Total: 2 configuration(s)');
   });
@@ -64,10 +58,9 @@ describe('List Command', () => {
   it('should list configurations from global with -g flag', () => {
     loadConfig.mockReturnValue({
       settings: { alias: 'cc' },
-      models: {
+      base: {},
+      configs: {
         test: {
-          base_url: 'https://api.example.com',
-          api_key: 'sk-xxx',
           model: 'model',
           env: {}
         }
@@ -85,12 +78,10 @@ describe('List Command', () => {
   it('should not show env section when no env vars', () => {
     loadConfig.mockReturnValue({
       settings: { alias: 'cc' },
-      models: {
+      base: {},
+      configs: {
         test: {
-          base_url: 'https://api.example.com',
-          api_key: 'sk-xxx',
-          model: 'model',
-          env: {}
+          model: 'model'
         }
       }
     });

@@ -1,5 +1,5 @@
 const { loadConfig, saveConfig, getLocalConfigPath, getGlobalConfigPath } = require('../config/loader');
-const { validateModelConfig, validateConfigId } = require('../config/validator');
+const { validateConfigEntry, validateConfigId } = require('../config/validator');
 const { loadEnvRegistry, appendToRegistry, buildEnvChoices, promptEnvValue, BUILTIN_ENV_VARS } = require('../config/env-registry');
 const { default: inquirer } = require('inquirer');
 const fs = require('fs');
@@ -23,32 +23,19 @@ async function addCommand(configId, options = {}) {
     if (fs.existsSync(configPath)) {
       config = loadConfig(configPath);
     } else {
-      config = { settings: { alias: 'cc' }, models: {} };
+      config = { settings: { alias: 'cc' }, base: {}, configs: {} };
     }
   }
 
   // Validate config ID
-  const idValidation = validateConfigId(configId, config.models);
+  const idValidation = validateConfigId(configId, config.configs || {});
   if (!idValidation.valid) {
     console.error(`Error: ${idValidation.error}`);
     process.exit(1);
   }
 
-  // Interactive prompts
+  // Interactive prompts — ask for model and env vars
   const answers = await inquirer.prompt([
-    {
-      type: 'input',
-      name: 'base_url',
-      message: 'Base URL:',
-      validate: (input) => input.trim() !== '' || 'Base URL is required'
-    },
-    {
-      type: 'password',
-      name: 'api_key',
-      message: 'API Key:',
-      mask: '*',
-      validate: (input) => input.trim() !== '' || 'API Key is required'
-    },
     {
       type: 'input',
       name: 'model',
@@ -57,10 +44,16 @@ async function addCommand(configId, options = {}) {
     {
       type: 'confirm',
       name: 'addEnv',
-      message: 'Add custom environment variables?',
-      default: false
+      message: 'Add environment variables (ANTHROPIC_BASE_URL, ANTHROPIC_AUTH_TOKEN, etc.)?',
+      default: true
     }
   ]);
+
+  const entry = {};
+
+  if (answers.model.trim()) {
+    entry.model = answers.model.trim();
+  }
 
   const env = {};
 
@@ -103,23 +96,20 @@ async function addCommand(configId, options = {}) {
     }
   }
 
-  // Create model config
-  const modelConfig = {
-    base_url: answers.base_url.trim(),
-    api_key: answers.api_key.trim(),
-    model: answers.model.trim(),
-    env
-  };
+  if (Object.keys(env).length > 0) {
+    entry.env = env;
+  }
 
   // Validate
-  const validation = validateModelConfig(modelConfig);
+  const validation = validateConfigEntry(entry);
   if (!validation.valid) {
-    console.error('Error: Missing required fields:', validation.errors.join(', '));
+    console.error(`Error: ${validation.error}`);
     process.exit(1);
   }
 
   // Save
-  config.models[configId] = modelConfig;
+  if (!config.configs) config.configs = {};
+  config.configs[configId] = entry;
   saveConfig(config, configPath);
 
   console.log(`Configuration '${configId}' added successfully to '${configPath}'.`);

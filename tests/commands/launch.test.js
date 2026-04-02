@@ -1,9 +1,11 @@
 // Set up mocks before importing modules
 jest.mock('../../src/config/loader');
+jest.mock('../../src/config/merger');
 jest.mock('child_process');
 
 const { launchCommand } = require('../../src/commands/launch');
 const { findConfig } = require('../../src/config/loader');
+const { mergeSettings, writeSettingsLocal } = require('../../src/config/merger');
 const { spawn } = require('child_process');
 
 describe('Launch Command', () => {
@@ -31,30 +33,30 @@ describe('Launch Command', () => {
   });
 
   it('should exit when config not found', () => {
-    findConfig.mockReturnValue({ config: { models: {} }, configPath: '/path/to/models.yaml', source: 'global' });
+    findConfig.mockReturnValue({ config: { configs: {} }, configPath: '/path/to/models.yaml', source: 'global' });
 
     expect(() => launchCommand('nonexistent')).toThrow('process.exit called');
     expect(mockError).toHaveBeenCalledWith("Error: Configuration 'nonexistent' not found.");
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 
-  it('should spawn claude with correct environment variables', () => {
+  it('should merge settings, write settings file, and spawn claude', () => {
     const mockConfig = {
-      models: {
+      configs: {
         test: {
-          base_url: 'https://api.example.com',
-          api_key: 'sk-test-key',
           model: 'gpt-4',
-          env: { CUSTOM_VAR: 'custom-value' }
+          env: { ANTHROPIC_AUTH_TOKEN: 'sk-test-key', CUSTOM_VAR: 'custom-value' }
         }
       }
     };
 
     findConfig.mockReturnValue({ config: mockConfig, configPath: '/path/to/models.yaml', source: 'global' });
 
-    const mockProcess = {
-      on: jest.fn()
-    };
+    const mergedSettings = { model: 'gpt-4', env: { ANTHROPIC_AUTH_TOKEN: 'sk-test-key', CUSTOM_VAR: 'custom-value' } };
+    mergeSettings.mockReturnValue(mergedSettings);
+    writeSettingsLocal.mockReturnValue('/project/.claude/settings.local.json');
+
+    const mockProcess = { on: jest.fn() };
     spawn.mockReturnValue(mockProcess);
 
     // Set process.exit mock to not throw for this test
@@ -62,35 +64,28 @@ describe('Launch Command', () => {
 
     launchCommand('test');
 
+    expect(mergeSettings).toHaveBeenCalledWith(mockConfig, 'test');
+    expect(writeSettingsLocal).toHaveBeenCalledWith(mergedSettings);
     expect(spawn).toHaveBeenCalledWith(
       'claude',
       [],
-      {
-        env: expect.objectContaining({
-          ANTHROPIC_BASE_URL: 'https://api.example.com',
-          ANTHROPIC_AUTH_TOKEN: 'sk-test-key',
-          ANTHROPIC_MODEL: 'gpt-4',
-          CUSTOM_VAR: 'custom-value'
-        }),
-        stdio: 'inherit',
-        shell: true
-      }
+      { stdio: 'inherit', shell: true }
     );
   });
 
   it('should handle claude not installed error', () => {
     const mockConfig = {
-      models: {
+      configs: {
         test: {
-          base_url: 'https://api.example.com',
-          api_key: 'sk-test',
           model: 'gpt-4',
-          env: {}
+          env: { ANTHROPIC_AUTH_TOKEN: 'sk-test' }
         }
       }
     };
 
     findConfig.mockReturnValue({ config: mockConfig, configPath: '/path/to/models.yaml', source: 'global' });
+    mergeSettings.mockReturnValue({ model: 'gpt-4' });
+    writeSettingsLocal.mockReturnValue('/project/.claude/settings.local.json');
 
     const mockProcess = { on: jest.fn() };
     spawn.mockReturnValue(mockProcess);

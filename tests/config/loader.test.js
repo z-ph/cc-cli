@@ -18,7 +18,7 @@ jest.mock('fs', () => ({
 }));
 
 // Require modules after mocks are set up
-const { loadConfig, saveConfig } = require('../../src/config/loader');
+const { loadConfig, saveConfig, findConfig } = require('../../src/config/loader');
 
 describe('Config Loader', () => {
   // Use path.join to get platform-specific paths
@@ -44,7 +44,8 @@ describe('Config Loader', () => {
       expect(writeFileSync).toHaveBeenCalled();
       expect(config).toEqual({
         settings: { alias: 'cc' },
-        models: {}
+        base: {},
+        configs: {}
       });
     });
 
@@ -53,7 +54,8 @@ describe('Config Loader', () => {
 
       const mockConfig = {
         settings: { alias: 'cl' },
-        models: { test: { base_url: 'http://test.com', api_key: 'key', model: 'model' } }
+        base: {},
+        configs: { test: { model: 'gpt-4', env: { ANTHROPIC_AUTH_TOKEN: 'key' } } }
       };
 
       existsSync
@@ -66,7 +68,7 @@ describe('Config Loader', () => {
 
       expect(readFileSync).toHaveBeenCalledWith(CONFIG_PATH, 'utf8');
       expect(config.settings.alias).toBe('cl');
-      expect(config.models.test.base_url).toBe('http://test.com');
+      expect(config.configs.test.model).toBe('gpt-4');
     });
   });
 
@@ -78,7 +80,8 @@ describe('Config Loader', () => {
 
       const config = {
         settings: { alias: 'cc' },
-        models: { test: { base_url: 'http://test.com', api_key: 'key', model: 'model' } }
+        base: {},
+        configs: { test: { model: 'gpt-4', env: { ANTHROPIC_AUTH_TOKEN: 'key' } } }
       };
 
       saveConfig(config);
@@ -88,6 +91,43 @@ describe('Config Loader', () => {
         expect.any(String),
         'utf8'
       );
+    });
+  });
+
+  describe('findConfig', () => {
+    it('should find config in local file under configs key', () => {
+      const { existsSync, readFileSync } = require('fs');
+
+      const mockConfig = {
+        settings: { alias: 'cc' },
+        base: {},
+        configs: { myconfig: { model: 'gpt-4' } }
+      };
+
+      existsSync.mockReturnValue(true);
+      readFileSync.mockReturnValue(yaml.dump(mockConfig));
+
+      const result = findConfig('myconfig');
+
+      expect(result.config.configs.myconfig).toBeDefined();
+      expect(result.source).toBe('local');
+    });
+
+    it('should return null config when configId not found', () => {
+      const { existsSync, readFileSync } = require('fs');
+
+      const mockConfig = {
+        settings: { alias: 'cc' },
+        base: {},
+        configs: { other: { model: 'gpt-4' } }
+      };
+
+      existsSync.mockReturnValue(true);
+      readFileSync.mockReturnValue(yaml.dump(mockConfig));
+
+      const result = findConfig('nonexistent');
+
+      expect(result.config).toBeNull();
     });
   });
 });

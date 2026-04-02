@@ -7,6 +7,7 @@ const { addCommand } = require('../src/commands/add');
 const { removeCommand } = require('../src/commands/remove');
 const { editCommand } = require('../src/commands/edit');
 const { aliasCommand } = require('../src/commands/alias');
+const { useCommand } = require('../src/commands/use');
 
 const program = new Command();
 
@@ -68,6 +69,15 @@ program
   .description('Change the CLI command alias')
   .action((name, options) => {
     aliasCommand(name, { ...options, target: options.target || program.opts().target });
+  });
+
+// Use command
+program
+  .command('use <config-id>')
+  .description('Apply a configuration to settings file without launching')
+  .option('-g, --global', 'write to ~/.claude/settings.json instead of ./.claude/settings.local.json')
+  .action((configId, options) => {
+    useCommand(configId, { ...options, target: options.target || program.opts().target });
   });
 
 program.parse();
