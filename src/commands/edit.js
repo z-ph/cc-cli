@@ -1,8 +1,29 @@
-const { loadConfig, saveConfig } = require('../config/loader');
-const inquirer = require('inquirer');
+const { loadConfig, saveConfig, findConfig, getLocalConfigPath } = require('../config/loader');
+const { default: inquirer } = require('inquirer');
+const fs = require('fs');
 
-async function editCommand(configId) {
-  const config = loadConfig();
+async function editCommand(configId, options = {}) {
+  const customPath = options?.target;
+
+  let config;
+  let configPath;
+
+  if (customPath) {
+    configPath = customPath;
+    config = loadConfig(customPath);
+  } else {
+    // Try to find the config (local or global)
+    const result = findConfig(configId);
+    if (!result.config || !result.config.models[configId]) {
+      console.error(`Error: Configuration '${configId}' not found.`);
+      console.log('Searched:');
+      console.log('  1. Current directory: ./.claude/models.yaml');
+      console.log('  2. Home directory: ~/.claude/models.yaml');
+      process.exit(1);
+    }
+    config = result.config;
+    configPath = result.configPath;
+  }
 
   if (!config.models[configId]) {
     console.error(`Error: Configuration '${configId}' not found.`);
@@ -12,17 +33,19 @@ async function editCommand(configId) {
 
   const model = config.models[configId];
 
+  console.log(`Editing configuration from: ${configPath}`);
+
   // Prompt for new values with defaults
   const answers = await inquirer.prompt([
     {
       type: 'input',
-      name: 'baseurl',
+      name: 'base_url',
       message: 'Base URL:',
-      default: model.baseurl
+      default: model.base_url
     },
     {
       type: 'password',
-      name: 'apikey',
+      name: 'api_key',
       message: 'API Key (press Enter to keep current):',
       mask: '*'
     },
@@ -35,9 +58,9 @@ async function editCommand(configId) {
   ]);
 
   // Update model config
-  model.baseurl = answers.baseurl.trim();
-  if (answers.apikey.trim() !== '') {
-    model.apikey = answers.apikey.trim();
+  model.base_url = answers.base_url.trim();
+  if (answers.api_key.trim() !== '') {
+    model.api_key = answers.api_key.trim();
   }
   model.model = answers.model.trim();
 
@@ -101,9 +124,9 @@ async function editCommand(configId) {
 
   // Save
   config.models[configId] = model;
-  saveConfig(config);
+  saveConfig(config, configPath);
 
-  console.log(`Configuration '${configId}' updated successfully.`);
+  console.log(`Configuration '${configId}' updated successfully in '${configPath}'.`);
 }
 
 module.exports = { editCommand };

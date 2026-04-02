@@ -1,23 +1,33 @@
 const { spawn } = require('child_process');
-const { loadConfig } = require('../config/loader');
-const path = require('path');
+const { findConfig } = require('../config/loader');
 
 function launchCommand(configId, options) {
-  const config = loadConfig();
+  const { config, configPath, source } = findConfig(configId, options?.target);
 
-  if (!config.models[configId]) {
-    console.error(`Error: Configuration '${configId}' not found.`);
-    console.log('Run "cc list" to see available configurations.');
+  if (!config || !config.models[configId]) {
+    if (source === 'custom') {
+      console.error(`Error: Configuration '${configId}' not found in '${configPath}'.`);
+    } else {
+      console.error(`Error: Configuration '${configId}' not found.`);
+      console.log('Searched:');
+      console.log('  1. Current directory: ./.claude/models.yaml');
+      console.log('  2. Home directory: ~/.claude/models.yaml');
+      console.log('Run "cc list" to see available configurations.');
+    }
     process.exit(1);
   }
 
   const modelConfig = config.models[configId];
 
+  if (source) {
+    console.log(`Using configuration from: ${configPath}`);
+  }
+
   // Build environment variables
   const env = {
     ...process.env,
-    ANTHROPIC_BASE_URL: modelConfig.baseurl,
-    ANTHROPIC_AUTH_TOKEN: modelConfig.apikey,
+    ANTHROPIC_BASE_URL: modelConfig.base_url,
+    ANTHROPIC_AUTH_TOKEN: modelConfig.api_key,
     ANTHROPIC_MODEL: modelConfig.model,
     ...modelConfig.env
   };

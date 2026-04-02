@@ -1,9 +1,31 @@
-const { loadConfig, saveConfig } = require('../config/loader');
+const { loadConfig, saveConfig, getLocalConfigPath, getGlobalConfigPath } = require('../config/loader');
 const { validateModelConfig, validateConfigId } = require('../config/validator');
-const inquirer = require('inquirer');
+const { default: inquirer } = require('inquirer');
+const fs = require('fs');
 
-async function addCommand(configId) {
-  const config = loadConfig();
+async function addCommand(configId, options = {}) {
+  const customPath = options?.target;
+
+  let configPath;
+  let config;
+
+  if (customPath) {
+    configPath = customPath;
+    config = loadConfig(customPath);
+  } else {
+    // Prefer local config (current directory)
+    const localPath = getLocalConfigPath();
+    const globalPath = getGlobalConfigPath();
+
+    if (fs.existsSync(localPath)) {
+      configPath = localPath;
+      config = loadConfig(localPath);
+    } else {
+      // Default to local path if neither exists
+      configPath = localPath;
+      config = { settings: { alias: 'cc' }, models: {} };
+    }
+  }
 
   // Validate config ID
   const idValidation = validateConfigId(configId, config.models);
@@ -16,13 +38,13 @@ async function addCommand(configId) {
   const answers = await inquirer.prompt([
     {
       type: 'input',
-      name: 'baseurl',
+      name: 'base_url',
       message: 'Base URL:',
       validate: (input) => input.trim() !== '' || 'Base URL is required'
     },
     {
       type: 'password',
-      name: 'apikey',
+      name: 'api_key',
       message: 'API Key:',
       mask: '*',
       validate: (input) => input.trim() !== '' || 'API Key is required'
@@ -77,8 +99,8 @@ async function addCommand(configId) {
 
   // Create model config
   const modelConfig = {
-    baseurl: answers.baseurl.trim(),
-    apikey: answers.apikey.trim(),
+    base_url: answers.base_url.trim(),
+    api_key: answers.api_key.trim(),
     model: answers.model.trim(),
     env
   };
@@ -92,9 +114,9 @@ async function addCommand(configId) {
 
   // Save
   config.models[configId] = modelConfig;
-  saveConfig(config);
+  saveConfig(config, configPath);
 
-  console.log(`Configuration '${configId}' added successfully.`);
+  console.log(`Configuration '${configId}' added successfully to '${configPath}'.`);
   console.log(`Run 'cc ${configId}' to use it.`);
 }
 

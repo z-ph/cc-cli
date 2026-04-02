@@ -1,4 +1,4 @@
-const REQUIRED_FIELDS = ['baseurl', 'apikey', 'model'];
+const REQUIRED_FIELDS = ['base_url', 'api_key', 'model'];
 
 function validateModelConfig(config) {
   const errors = [];
