@@ -17,7 +17,7 @@ function launchCommand(configId, options) {
   const env = {
     ...process.env,
     ANTHROPIC_BASE_URL: modelConfig.baseurl,
-    ANTHROPIC_API_KEY: modelConfig.apikey,
+    ANTHROPIC_AUTH_TOKEN: modelConfig.apikey,
     ANTHROPIC_MODEL: modelConfig.model,
     ...modelConfig.env
   };
