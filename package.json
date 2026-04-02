@@ -1,0 +1,19 @@
+{
+  "name": "cc-cli",
+  "version": "1.0.0",
+  "description": "Quick launcher for Claude Code with custom configurations",
+  "bin": {
+    "cc": "./bin/cc.js"
+  },
+  "scripts": {
+    "test": "node tests/config.test.js"
+  },
+  "dependencies": {
+    "commander": "^12.0.0",
+    "js-yaml": "^4.1.0",
+    "inquirer": "^9.2.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
