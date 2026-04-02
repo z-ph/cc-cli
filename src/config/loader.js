@@ -12,7 +12,7 @@ const DEFAULT_CONFIG = {
   settings: {
     alias: 'cc'
   },
-  base: {},
+  envs: {},
   configs: {}
 };
 
@@ -24,7 +24,38 @@ function getGlobalConfigPath() {
   return GLOBAL_CONFIG_PATH;
 }
 
-function findConfig(configId, customConfigPath) {
+function findEnvConfig(configId, customConfigPath) {
+  // Priority 1: Custom config file (if specified)
+  if (customConfigPath) {
+    const resolvedPath = path.resolve(customConfigPath);
+    if (fs.existsSync(resolvedPath)) {
+      const config = yaml.load(fs.readFileSync(resolvedPath, 'utf8'));
+      return { config, configPath: resolvedPath, source: 'custom' };
+    }
+    return { config: null, configPath: resolvedPath, source: 'custom' };
+  }
+
+  // Priority 2: Local config (.claude/models.yaml in current directory)
+  const localPath = getLocalConfigPath();
+  if (fs.existsSync(localPath)) {
+    const config = yaml.load(fs.readFileSync(localPath, 'utf8'));
+    if (config.envs && config.envs[configId]) {
+      return { config, configPath: localPath, source: 'local' };
+    }
+  }
+
+  // Priority 3: Global config (~/.claude/models.yaml)
+  if (fs.existsSync(GLOBAL_CONFIG_PATH)) {
+    const config = yaml.load(fs.readFileSync(GLOBAL_CONFIG_PATH, 'utf8'));
+    if (config.envs && config.envs[configId]) {
+      return { config, configPath: GLOBAL_CONFIG_PATH, source: 'global' };
+    }
+  }
+
+  return { config: null, configPath: localPath, source: null };
+}
+
+function findConfigEntry(configId, customConfigPath) {
   // Priority 1: Custom config file (if specified)
   if (customConfigPath) {
     const resolvedPath = path.resolve(customConfigPath);
@@ -88,7 +119,8 @@ function saveConfig(config, customConfigPath) {
 module.exports = {
   loadConfig,
   saveConfig,
-  findConfig,
+  findEnvConfig,
+  findConfigEntry,
   getLocalConfigPath,
   getGlobalConfigPath
 };

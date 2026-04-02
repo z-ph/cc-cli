@@ -1,17 +1,16 @@
 const { loadConfig, saveConfig, getLocalConfigPath, getGlobalConfigPath } = require('../config/loader');
 const { validateConfigId } = require('../config/validator');
-const { loadEnvRegistry, appendToRegistry, buildEnvChoices, promptEnvValue } = require('../config/env-registry');
+const { loadEnvRegistry, buildEnvChoices, promptEnvValue } = require('../config/env-registry');
 const { maybeSaveToRegistry } = require('./add');
 const { default: inquirer } = require('inquirer');
 const fs = require('fs');
 
 async function editCommand(configId, options = {}) {
   const customPath = options?.target;
+  const useGlobal = options?.global;
 
   let config;
   let configPath;
-
-  const useGlobal = options?.global;
 
   if (customPath) {
     configPath = customPath;
@@ -28,14 +27,14 @@ async function editCommand(configId, options = {}) {
     }
   }
 
-  if (!config || !config.configs || !config.configs[configId]) {
-    console.error(`Error: Configuration '${configId}' not found in '${configPath}'.`);
+  if (!config || !config.envs || !config.envs[configId]) {
+    console.error(`Error: Env '${configId}' not found in '${configPath}'.`);
     process.exit(1);
   }
 
-  const entry = config.configs[configId];
+  const env = { ...config.envs[configId] };
 
-  console.log(`Editing configuration from: ${configPath}`);
+  console.log(`Editing env from: ${configPath}`);
 
   // Prompt for new ID
   const idAnswer = await inquirer.prompt([
@@ -49,50 +48,54 @@ async function editCommand(configId, options = {}) {
 
   const newId = idAnswer.newId.trim();
   if (newId !== configId) {
-    const idValidation = validateConfigId(newId, { ...config.configs, [configId]: undefined });
+    const idValidation = validateConfigId(newId, { ...config.envs, [configId]: undefined });
     if (!idValidation.valid) {
       console.error(`Error: ${idValidation.error}`);
       process.exit(1);
     }
   }
 
-  // Prompt for core fields
-  const currentEnv = entry.env || {};
+  // Prompt for core env vars (optional, empty = not injected)
   const answers = await inquirer.prompt([
     {
       type: 'input',
       name: 'baseUrl',
-      message: 'ANTHROPIC_BASE_URL:',
-      default: currentEnv.ANTHROPIC_BASE_URL || ''
+      message: 'ANTHROPIC_BASE_URL (empty to remove):',
+      ...(env.ANTHROPIC_BASE_URL ? { default: env.ANTHROPIC_BASE_URL } : {})
     },
     {
       type: 'password',
       name: 'authToken',
-      message: 'ANTHROPIC_AUTH_TOKEN (press Enter to keep current):',
+      message: 'ANTHROPIC_AUTH_TOKEN (empty to remove):',
       mask: '*'
     },
     {
       type: 'input',
       name: 'model',
-      message: 'Model:',
-      default: entry.model || ''
+      message: 'ANTHROPIC_MODEL (empty to remove):',
+      ...(env.ANTHROPIC_MODEL ? { default: env.ANTHROPIC_MODEL } : {})
     }
   ]);
 
-  if (!entry.env) entry.env = {};
   if (answers.baseUrl.trim()) {
-    entry.env.ANTHROPIC_BASE_URL = answers.baseUrl.trim();
+    env.ANTHROPIC_BASE_URL = answers.baseUrl.trim();
+  } else {
+    delete env.ANTHROPIC_BASE_URL;
   }
   if (answers.authToken.trim()) {
-    entry.env.ANTHROPIC_AUTH_TOKEN = answers.authToken.trim();
+    env.ANTHROPIC_AUTH_TOKEN = answers.authToken.trim();
+  } else {
+    delete env.ANTHROPIC_AUTH_TOKEN;
   }
   if (answers.model.trim()) {
-    entry.model = answers.model.trim();
+    env.ANTHROPIC_MODEL = answers.model.trim();
   } else {
-    delete entry.model;
+    delete env.ANTHROPIC_MODEL;
   }
 
   // Handle other env vars
+  const otherKeys = Object.keys(env).filter(k => k !== 'ANTHROPIC_BASE_URL' && k !== 'ANTHROPIC_AUTH_TOKEN' && k !== 'ANTHROPIC_MODEL');
+
   const envChoice = await inquirer.prompt([
     {
       type: 'list',
@@ -101,37 +104,29 @@ async function editCommand(configId, options = {}) {
       choices: [
         { name: 'Keep as is', value: 'keep' },
         { name: 'Edit/add variables', value: 'edit' },
-        { name: 'Clear all (except BASE_URL and AUTH_TOKEN)', value: 'clear' }
+        { name: 'Clear all (except core vars)', value: 'clear' }
       ]
     }
   ]);
 
   if (envChoice.action === 'clear') {
-    // Keep BASE_URL and AUTH_TOKEN, clear the rest
-    const baseUrl = entry.env.ANTHROPIC_BASE_URL;
-    const authToken = entry.env.ANTHROPIC_AUTH_TOKEN;
-    entry.env = {};
-    if (baseUrl) entry.env.ANTHROPIC_BASE_URL = baseUrl;
-    if (authToken) entry.env.ANTHROPIC_AUTH_TOKEN = authToken;
+    for (const key of otherKeys) {
+      delete env[key];
+    }
   } else if (envChoice.action === 'edit') {
-    // Show current env vars (excluding the two core ones)
     console.log('\nCurrent environment variables:');
-    const registry = loadEnvRegistry();
-    const otherKeys = Object.keys(entry.env || {}).filter(k => k !== 'ANTHROPIC_BASE_URL' && k !== 'ANTHROPIC_AUTH_TOKEN');
     if (otherKeys.length === 0) {
       console.log('  (none)');
     } else {
       for (const key of otherKeys) {
-        const varDef = registry.find(v => v.key === key);
-        const desc = varDef ? ` (${varDef.desc})` : '';
-        console.log(`  ${key}=${entry.env[key]}${desc}`);
+        console.log(`  ${key}=${env[key]}`);
       }
     }
 
-    // Select from registry or custom
+    const registry = loadEnvRegistry();
     let selecting = true;
     while (selecting) {
-      const choices = buildEnvChoices(registry, entry.env || {});
+      const choices = buildEnvChoices(registry, env);
       const selectAnswer = await inquirer.prompt([
         {
           type: 'list',
@@ -149,31 +144,31 @@ async function editCommand(configId, options = {}) {
       if (selectAnswer.selected === '__custom__') {
         const customAnswer = await inquirer.prompt([
           { type: 'input', name: 'key', message: 'Variable name:', validate: (i) => i.trim() !== '' || 'Name is required' },
-          { type: 'input', name: 'value', message: 'Value:', default: entry.env && entry.env[customAnswer?.key] || '' }
+          { type: 'input', name: 'value', message: 'Value:', default: env[customAnswer?.key] || '' }
         ]);
-        entry.env[customAnswer.key.trim()] = customAnswer.value.trim();
+        env[customAnswer.key.trim()] = customAnswer.value.trim();
         await maybeSaveToRegistry(customAnswer.key.trim(), registry);
         continue;
       }
 
       const varDef = registry.find(v => v.key === selectAnswer.selected);
-      const value = await promptEnvValue(varDef, entry.env && entry.env[varDef.key]);
+      const value = await promptEnvValue(varDef, env[varDef.key]);
       if (value !== null && value !== '') {
-        entry.env[varDef.key] = value;
+        env[varDef.key] = value;
       }
     }
   }
 
   // Save
   if (newId !== configId) {
-    delete config.configs[configId];
-    config.configs[newId] = entry;
+    delete config.envs[configId];
+    config.envs[newId] = env;
   } else {
-    config.configs[configId] = entry;
+    config.envs[configId] = env;
   }
   saveConfig(config, configPath);
 
-  console.log(`Configuration '${newId}' updated successfully in '${configPath}'.`);
+  console.log(`Env '${newId}' updated successfully in '${configPath}'.`);
 }
 
 module.exports = { editCommand };

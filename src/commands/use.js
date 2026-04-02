@@ -1,11 +1,11 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { findConfig } = require('../config/loader');
-const { mergeSettings } = require('../config/merger');
+const { findConfigEntry } = require('../config/loader');
+const { deepMerge } = require('../config/merger');
 
 function useCommand(configId, options = {}) {
-  const { config, configPath, source } = findConfig(configId, options?.target);
+  const { config, configPath, source } = findConfigEntry(configId, options?.target);
 
   if (!config || !config.configs || !config.configs[configId]) {
     if (source === 'custom') {
@@ -20,22 +20,19 @@ function useCommand(configId, options = {}) {
     process.exit(1);
   }
 
-  // Merge base + config
-  const merged = mergeSettings(config, configId);
+  const configEntry = config.configs[configId];
 
   // Determine target settings path
   const useGlobal = options?.global;
   let settingsPath;
 
   if (useGlobal) {
-    // Write to ~/.claude/settings.json
     const globalDir = path.join(os.homedir(), '.claude');
     settingsPath = path.join(globalDir, 'settings.json');
     if (!fs.existsSync(globalDir)) {
       fs.mkdirSync(globalDir, { recursive: true });
     }
   } else {
-    // Write to ./.claude/settings.local.json
     const localDir = path.join(process.cwd(), '.claude');
     settingsPath = path.join(localDir, 'settings.local.json');
     if (!fs.existsSync(localDir)) {
@@ -49,8 +46,15 @@ function useCommand(configId, options = {}) {
     fs.copyFileSync(settingsPath, sourcePath);
   }
 
+  // Merge with source (user's original) settings — config wins on conflicts
+  let finalSettings = configEntry;
+  if (fs.existsSync(sourcePath)) {
+    const sourceContent = JSON.parse(fs.readFileSync(sourcePath, 'utf8'));
+    finalSettings = deepMerge(sourceContent, configEntry);
+  }
+
   // Write settings
-  fs.writeFileSync(settingsPath, JSON.stringify(merged, null, 2), 'utf8');
+  fs.writeFileSync(settingsPath, JSON.stringify(finalSettings, null, 2), 'utf8');
 
   console.log(`Configuration '${configId}' applied to: ${settingsPath}`);
 }

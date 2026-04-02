@@ -1,15 +1,14 @@
 const { spawn } = require('child_process');
-const { findConfig } = require('../config/loader');
-const { mergeSettings, writeSettingsLocal } = require('../config/merger');
+const { findEnvConfig } = require('../config/loader');
 
 function launchCommand(configId, options) {
-  const { config, configPath, source } = findConfig(configId, options?.target);
+  const { config, configPath, source } = findEnvConfig(configId, options?.target);
 
-  if (!config || !config.configs || !config.configs[configId]) {
+  if (!config || !config.envs || !config.envs[configId]) {
     if (source === 'custom') {
-      console.error(`Error: Configuration '${configId}' not found in '${configPath}'.`);
+      console.error(`Error: Env configuration '${configId}' not found in '${configPath}'.`);
     } else {
-      console.error(`Error: Configuration '${configId}' not found.`);
+      console.error(`Error: Env configuration '${configId}' not found.`);
       console.log('Searched:');
       console.log('  1. Current directory: ./.claude/models.yaml');
       console.log('  2. Home directory: ~/.claude/models.yaml');
@@ -22,15 +21,15 @@ function launchCommand(configId, options) {
     console.log(`Using configuration from: ${configPath}`);
   }
 
-  // Merge base + config, write to settings.local.json
-  const merged = mergeSettings(config, configId);
-  const settingsPath = writeSettingsLocal(merged);
-  console.log(`Settings written to: ${settingsPath}`);
+  // Inject env vars from config
+  const envVars = config.envs[configId];
+  const env = { ...process.env, ...envVars };
 
-  // Spawn claude process (settings file provides all configuration)
+  // Spawn claude process with env injection
   const claudeProcess = spawn('claude', [], {
     stdio: 'inherit',
-    shell: true
+    shell: true,
+    env
   });
 
   claudeProcess.on('exit', (code) => {

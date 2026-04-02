@@ -18,56 +18,49 @@ function listCommand(options = {}) {
     if (fs.existsSync(configPath)) {
       config = loadConfig(configPath);
     } else {
-      config = { settings: { alias: 'cc' }, base: {}, configs: {} };
+      config = { settings: { alias: 'cc' }, envs: {}, configs: {} };
     }
   }
 
   console.log(`Config file: ${configPath}`);
 
-  // Show base config if present
-  const base = config.base || {};
-  const baseKeys = Object.keys(base);
-  if (baseKeys.length > 0) {
-    console.log('\nBase defaults:');
-    for (const key of baseKeys) {
-      if (key === 'env') {
-        const envKeys = Object.keys(base.env || {});
-        console.log(`  env: ${envKeys.join(', ')}`);
-      } else {
-        console.log(`  ${key}: ${JSON.stringify(base[key])}`);
+  // Show envs
+  const envIds = Object.keys(config.envs || {});
+  console.log('\nEnvs:');
+  if (envIds.length === 0) {
+    console.log('  No env configurations found.');
+    console.log('  Run "cc add <id>" to create one.');
+  } else {
+    for (const id of envIds) {
+      const envVars = config.envs[id] || {};
+      const keys = Object.keys(envVars);
+      console.log(`  ${id}`);
+      if (keys.length > 0) {
+        console.log(`    vars:  ${keys.join(', ')}`);
       }
+      console.log();
     }
+    console.log(`  Total: ${envIds.length} env(s)`);
   }
 
-  console.log('\nAvailable configurations:\n');
-
+  // Show configs
   const configIds = Object.keys(config.configs || {});
-
+  console.log('\nConfigs:');
   if (configIds.length === 0) {
-    console.log('  No configurations found.');
-    console.log('  Run "cc add <config-id>" to create one.');
-    return;
+    console.log('  No settings configurations found.');
+    console.log('  Run "cc add-config <id>" to create one.');
+  } else {
+    for (const id of configIds) {
+      const entry = config.configs[id];
+      console.log(`  ${id}`);
+      const keys = Object.keys(entry).filter(k => true);
+      if (keys.length > 0) {
+        console.log(`    fields: ${keys.join(', ')}`);
+      }
+      console.log();
+    }
+    console.log(`  Total: ${configIds.length} config(s)`);
   }
-
-  for (const id of configIds) {
-    const entry = config.configs[id];
-    console.log(`  ${id}`);
-    if (entry.model) {
-      console.log(`    model: ${entry.model}`);
-    }
-    const envKeys = Object.keys(entry.env || {});
-    if (envKeys.length > 0) {
-      console.log(`    env:   ${envKeys.join(', ')}`);
-    }
-    // Show brief summary of other settings
-    const otherKeys = Object.keys(entry).filter(k => k !== 'model' && k !== 'env');
-    if (otherKeys.length > 0) {
-      console.log(`    other: ${otherKeys.join(', ')}`);
-    }
-    console.log();
-  }
-
-  console.log(`Total: ${configIds.length} configuration(s)`);
 }
 
 module.exports = { listCommand };

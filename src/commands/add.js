@@ -1,16 +1,15 @@
 const { loadConfig, saveConfig, getLocalConfigPath, getGlobalConfigPath } = require('../config/loader');
-const { validateConfigEntry, validateConfigId } = require('../config/validator');
+const { validateConfigId } = require('../config/validator');
 const { loadEnvRegistry, appendToRegistry, buildEnvChoices, promptEnvValue, BUILTIN_ENV_VARS } = require('../config/env-registry');
 const { default: inquirer } = require('inquirer');
 const fs = require('fs');
 
 async function addCommand(configId, options = {}) {
   const customPath = options?.target;
+  const useGlobal = options?.global;
 
   let configPath;
   let config;
-
-  const useGlobal = options?.global;
 
   if (customPath) {
     configPath = customPath;
@@ -23,44 +22,63 @@ async function addCommand(configId, options = {}) {
     if (fs.existsSync(configPath)) {
       config = loadConfig(configPath);
     } else {
-      config = { settings: { alias: 'cc' }, base: {}, configs: {} };
+      config = { settings: { alias: 'cc' }, envs: {}, configs: {} };
     }
   }
 
   // Validate config ID
-  const idValidation = validateConfigId(configId, config.configs || {});
+  const idValidation = validateConfigId(configId, config.envs || {});
   if (!idValidation.valid) {
     console.error(`Error: ${idValidation.error}`);
     process.exit(1);
   }
 
-  // Interactive prompts — core fields first
+  // Parse source settings file if provided
+  let sourceEnv = {};
+  const sourcePath = options?.source;
+  if (sourcePath) {
+    const resolvedSource = require('path').resolve(sourcePath);
+    if (!fs.existsSync(resolvedSource)) {
+      console.error(`Error: Source file '${resolvedSource}' not found.`);
+      process.exit(1);
+    }
+    try {
+      const sourceSettings = JSON.parse(fs.readFileSync(resolvedSource, 'utf8'));
+      sourceEnv = sourceSettings.env || {};
+    } catch (e) {
+      console.error(`Error: Failed to parse source file: ${e.message}`);
+      process.exit(1);
+    }
+  }
+
+  // Interactive prompts — core env vars (optional, empty = not injected)
   const answers = await inquirer.prompt([
     {
       type: 'input',
       name: 'baseUrl',
-      message: 'ANTHROPIC_BASE_URL:'
+      message: 'ANTHROPIC_BASE_URL (optional, enter to skip):',
+      ...(sourceEnv.ANTHROPIC_BASE_URL ? { default: sourceEnv.ANTHROPIC_BASE_URL } : {})
     },
     {
       type: 'password',
       name: 'authToken',
-      message: 'ANTHROPIC_AUTH_TOKEN:',
+      message: 'ANTHROPIC_AUTH_TOKEN (optional, enter to skip):',
       mask: '*'
     },
     {
       type: 'input',
       name: 'model',
-      message: 'Model (press Enter to use Claude Code default):'
+      message: 'ANTHROPIC_MODEL (optional, enter to skip):',
+      ...(sourceEnv.ANTHROPIC_MODEL ? { default: sourceEnv.ANTHROPIC_MODEL } : {})
     },
     {
       type: 'confirm',
       name: 'addEnv',
       message: 'Add other environment variables?',
-      default: false
+      default: Object.keys(sourceEnv).some(k => !['ANTHROPIC_BASE_URL', 'ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_MODEL'].includes(k)) || false
     }
   ]);
 
-  const entry = {};
   const env = {};
 
   if (answers.baseUrl.trim()) {
@@ -70,7 +88,15 @@ async function addCommand(configId, options = {}) {
     env.ANTHROPIC_AUTH_TOKEN = answers.authToken.trim();
   }
   if (answers.model.trim()) {
-    entry.model = answers.model.trim();
+    env.ANTHROPIC_MODEL = answers.model.trim();
+  }
+
+  // Pre-fill non-core vars from source
+  const coreKeys = ['ANTHROPIC_BASE_URL', 'ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_MODEL'];
+  for (const [key, value] of Object.entries(sourceEnv)) {
+    if (!coreKeys.includes(key)) {
+      env[key] = value;
+    }
   }
 
   if (answers.addEnv) {
@@ -112,23 +138,12 @@ async function addCommand(configId, options = {}) {
     }
   }
 
-  if (Object.keys(env).length > 0) {
-    entry.env = env;
-  }
-
-  // Validate
-  const validation = validateConfigEntry(entry);
-  if (!validation.valid) {
-    console.error(`Error: ${validation.error}`);
-    process.exit(1);
-  }
-
   // Save
-  if (!config.configs) config.configs = {};
-  config.configs[configId] = entry;
+  if (!config.envs) config.envs = {};
+  config.envs[configId] = env;
   saveConfig(config, configPath);
 
-  console.log(`Configuration '${configId}' added successfully to '${configPath}'.`);
+  console.log(`Env '${configId}' added successfully to '${configPath}'.`);
   console.log(`Run 'cc ${configId}' to use it.`);
 }
 
