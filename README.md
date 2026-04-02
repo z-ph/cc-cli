@@ -21,137 +21,55 @@ npm link
 
 ## 快速开始
 
-### 1. 添加配置
+### 1. 添加 env 配置（模型/服务提供商）
 
 ```bash
 cc add glm5.1
 ```
 
 按提示输入：
-- `Model`: 模型名称（如 `glm-5.1`，可留空使用 Claude Code 默认值）
-- 是否添加环境变量（`ANTHROPIC_BASE_URL`、`ANTHROPIC_AUTH_TOKEN` 等）
+- `ANTHROPIC_BASE_URL`: API 地址
+- `ANTHROPIC_AUTH_TOKEN`: API 密钥
+- `ANTHROPIC_MODEL`: 模型名称（可留空）
 
 ### 2. 启动 Claude Code
 
 ```bash
-cc glm5.1
+cc glm5.1    # 以 env 注入方式启动
 ```
 
-这会将配置合并写入 `.claude/settings.local.json`，然后启动 Claude Code。
-
-### 3. 切换配置（不启动）
+### 3. 添加 settings 配置（权限/沙箱等）
 
 ```bash
-cc use glm5.1      # 写入 ./.claude/settings.local.json
-cc use glm5.1 -g   # 写入 ~/.claude/settings.json
+cc add-config strict
+```
+
+按提示配置 permissions 等 Claude Code settings 字段。
+
+### 4. 应用 settings 配置
+
+```bash
+cc use strict       # 写入 .claude/settings.local.json
+cc use strict -g    # 写入 ~/.claude/settings.json（全局）
 ```
 
 ---
 
-## 配置文件查找规则
+## 命令列表
 
-CC CLI 按以下优先级查找配置文件：
-
-1. **当前目录**（优先）：`./.claude/models.yaml`
-2. **用户目录**（备选）：`~/.claude/models.yaml`
-
-如果当前目录有配置文件，优先使用；否则使用全局配置。
-
-### 指定自定义配置文件
-
-使用 `-t/--target` 参数指定任意 YAML 文件：
-
-```bash
-cc glm5.1 -t ./project-a/models.yaml     # 使用指定文件启动
-cc list -t /path/to/custom-config.yaml  # 查看指定文件中的配置
-cc add glm5.1 -t ./team-config.yaml     # 添加配置到指定文件
-```
-
----
-
-## 命令参考
-
-全局选项：
-- `-t, --target <file>` - 指定自定义配置文件（所有命令都支持）
-
-### `cc <config-id>`
-启动指定配置的 Claude Code。
-
-```bash
-cc glm5.1      # 使用 glm5.1 配置
-cc gpt4        # 使用 gpt4 配置
-cc local       # 使用本地模型配置
-```
-
-### `cc use <config-id>`
-将配置应用到 settings 文件，不启动 Claude Code。
-
-```bash
-cc use glm5.1         # 写入 ./.claude/settings.local.json
-cc use glm5.1 -g      # 写入 ~/.claude/settings.json
-```
-
-### `cc list`
-查看所有已配置的配置项。
-
-```bash
-cc list
-```
-
-输出示例：
-```
-Config file: /project/.claude/models.yaml
-
-Available configurations:
-
-  glm5.1
-    model: glm-5.1
-    env:   ANTHROPIC_BASE_URL, ANTHROPIC_AUTH_TOKEN
-
-  gpt4
-    model: gpt-4o
-
-Total: 2 configuration(s)
-```
-
-### `cc add <config-id>`
-交互式添加新配置。
-
-```bash
-cc add my-model
-cc add my-model -g    # 添加到全局配置
-```
-
-配置 ID 规则：
-- 只能包含字母、数字、点、下划线和连字符
-- 不能重复
-
-### `cc remove <config-id>`
-删除配置。
-
-```bash
-cc remove glm5.1
-cc remove glm5.1 -g   # 从全局配置删除
-```
-
-### `cc edit <config-id>`
-交互式编辑现有配置。
-
-```bash
-cc edit glm5.1
-```
-
-可以修改：
-- Model
-- 环境变量（保留/编辑/清空）
-
-### `cc alias [name]`
-查看或修改命令别名。
-
-```bash
-cc alias         # 查看当前别名
-cc alias cl      # 将命令改为 `cl`
-```
+| 命令 | 说明 |
+|------|------|
+| `cc <env-id>` | 以 env 注入方式启动 Claude Code |
+| `cc use <config-id>` | 将 settings 配置写入 settings 文件（不启动） |
+| `cc add <id>` | 添加 env 配置 |
+| `cc add-config <id>` | 添加 settings 配置 |
+| `cc edit <id>` | 编辑 env 配置 |
+| `cc edit-config <id>` | 编辑 settings 配置 |
+| `cc remove <id>` | 删除 env 配置 |
+| `cc remove-config <id>` | 删除 settings 配置 |
+| `cc list` | 列出所有配置 |
+| `cc restore` | 恢复 settings 备份 |
+| `cc alias [name]` | 修改 CLI 命令别名 |
 
 ---
 
@@ -161,121 +79,47 @@ cc alias cl      # 将命令改为 `cl`
 
 ### 结构说明
 
-配置直接使用 Claude Code 的官方 settings 字段，支持 `base` 定义共享默认值，`configs` 定义多个命名配置。
-
 ```yaml
 settings:
-  alias: cc                # CLI 命令别名（非 Claude Code 字段）
+  alias: cc              # CLI 命令别名
 
-base:                      # 共享默认值，合并到每个 config
-  model: claude-sonnet-4-6
-  env:
-    ANTHROPIC_BASE_URL: https://api.anthropic.com
-  permissions:
-    allow:
-      - "Bash(npm run *)"
-    deny:
-      - "Read(./.env)"
+envs:                    # 环境变量配置（通过 env 注入启动）
+  <env-id>:
+    ANTHROPIC_BASE_URL: <url>
+    ANTHROPIC_AUTH_TOKEN: <key>
+    ANTHROPIC_MODEL: <model-name>
+    # 其他环境变量...
 
-configs:
-  <config-id>:             # 配置标识名
-    model: <name>          # 模型名称（Claude Code 的 model 字段）
-    env:                   # 环境变量（Claude Code 的 env 字段）
-      ANTHROPIC_BASE_URL: <url>
-      ANTHROPIC_AUTH_TOKEN: <key>
-    permissions:           # 权限设置（可选）
+configs:                 # Claude Code settings 配置（通过 settings 文件应用）
+  <config-id>:
+    permissions:
       allow: [...]
       deny: [...]
+    hooks: {...}
+    # 其他 Claude Code settings 字段...
 ```
 
-### 合并规则
+### 使用流程
 
-启动或 `use` 时，`base` 和对应 config 会深度合并：
-- **字符串/数字**：config 覆盖 base
-- **对象**（env、permissions 等）：递归合并
-- **数组**（permissions.allow、permissions.deny 等）：拼接并去重
+**env 配置**（`cc <env-id>`）：直接通过环境变量注入启动 Claude Code，不修改 settings 文件。
 
-### 示例配置
-
-```yaml
-settings:
-  alias: cc
-
-base:
-  permissions:
-    allow:
-      - "Bash(npm run *)"
-    deny:
-      - "Read(./.env)"
-
-configs:
-  # 智谱 GLM-5.1
-  glm5.1:
-    model: glm-5.1
-    env:
-      ANTHROPIC_BASE_URL: https://open.bigmodel.cn/api/paas/v4
-      ANTHROPIC_AUTH_TOKEN: sk-your-key-here
-
-  # OpenAI GPT-4o
-  gpt4o:
-    model: gpt-4o
-    env:
-      ANTHROPIC_BASE_URL: https://api.openai.com/v1
-      ANTHROPIC_AUTH_TOKEN: sk-your-key-here
-    permissions:
-      allow:
-        - "Bash(*)"
-
-  # 本地 Ollama
-  local:
-    model: llama3.1
-    env:
-      ANTHROPIC_BASE_URL: http://localhost:11434/v1
-      ANTHROPIC_AUTH_TOKEN: ollama
-```
+**settings 配置**（`cc use <config-id>`）：合并到 `.claude/settings.local.json`（或 `~/.claude/settings.json`），首次使用时自动备份原文件为 `settings.source.json`。
 
 ---
 
 ## 常见问题
 
-### Q: 提示 "Configuration 'xxx' not found"
+### Q: 提示 "Env configuration 'xxx' not found"
 配置不存在。先使用 `cc add xxx` 创建配置，或用 `cc list` 查看可用配置。
 
-### Q: 提示 "Claude Code is not installed"
-你需要先安装 Claude Code：
+### Q: `cc <id>` 和 `cc use <id>` 有什么区别？
+- `cc <id>`：从 `envs` 读取环境变量，以 env 注入方式启动 Claude Code
+- `cc use <id>`：从 `configs` 读取 settings 配置，写入 settings 文件
+
+### Q: 如何恢复被覆盖的 settings 文件？
 ```bash
-npm install -g @anthropic-ai/claude-code
-```
-
-### Q: 如何切换不同的模型？
-使用不同的配置 ID 启动：
-```bash
-cc glm5.1    # 智谱
-cc gpt4o     # OpenAI
-cc local     # 本地模型
-```
-
-或使用 `use` 命令只切换配置不启动：
-```bash
-cc use glm5.1
-```
-
-### Q: `cc <config-id>` 和 `cc use <config-id>` 有什么区别？
-- `cc <config-id>`：写入 settings 文件并启动 Claude Code
-- `cc use <config-id>`：只写入 settings 文件，不启动
-
-### Q: 环境变量如何使用？
-在 `env` 字段中添加任意键值对，会写入 Claude Code 的 settings 文件：
-
-```yaml
-configs:
-  myconfig:
-    model: model-name
-    env:
-      ANTHROPIC_BASE_URL: https://api.example.com
-      ANTHROPIC_AUTH_TOKEN: sk-xxx
-      HTTP_PROXY: http://127.0.0.1:7890
-      CLAUDE_CODE_DEBUG: "true"
+cc restore       # 恢复 .claude/settings.local.json
+cc restore -g    # 恢复 ~/.claude/settings.json
 ```
 
 ### Q: 命令冲突（`cc` 被其他程序占用）
@@ -283,8 +127,6 @@ configs:
 ```bash
 cc alias ccl    # 改用 ccl 命令
 ```
-
-然后重新创建 npm 链接（如需）。
 
 ---
 
@@ -297,9 +139,3 @@ npm unlink -g cc-cli
 # 删除配置文件（可选）
 rm ~/.claude/models.yaml
 ```
-
----
-
-## 支持
-
-如有问题或建议，请提交 issue 或联系开发者。
