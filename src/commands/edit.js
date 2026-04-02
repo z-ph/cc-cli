@@ -1,4 +1,5 @@
 const { loadConfig, saveConfig, getLocalConfigPath, getGlobalConfigPath } = require('../config/loader');
+const { validateConfigId } = require('../config/validator');
 const { default: inquirer } = require('inquirer');
 const fs = require('fs');
 
@@ -33,6 +34,25 @@ async function editCommand(configId, options = {}) {
   const model = config.models[configId];
 
   console.log(`Editing configuration from: ${configPath}`);
+
+  // Prompt for new ID
+  const idAnswer = await inquirer.prompt([
+    {
+      type: 'input',
+      name: 'newId',
+      message: 'Config ID:',
+      default: configId
+    }
+  ]);
+
+  const newId = idAnswer.newId.trim();
+  if (newId !== configId) {
+    const idValidation = validateConfigId(newId, { ...config.models, [configId]: undefined });
+    if (!idValidation.valid) {
+      console.error(`Error: ${idValidation.error}`);
+      process.exit(1);
+    }
+  }
 
   // Prompt for new values with defaults
   const answers = await inquirer.prompt([
@@ -122,10 +142,15 @@ async function editCommand(configId, options = {}) {
   }
 
   // Save
-  config.models[configId] = model;
+  if (newId !== configId) {
+    delete config.models[configId];
+    config.models[newId] = model;
+  } else {
+    config.models[configId] = model;
+  }
   saveConfig(config, configPath);
 
-  console.log(`Configuration '${configId}' updated successfully in '${configPath}'.`);
+  console.log(`Configuration '${newId}' updated successfully in '${configPath}'.`);
 }
 
 module.exports = { editCommand };
