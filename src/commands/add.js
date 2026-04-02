@@ -51,8 +51,7 @@ async function addCommand(configId, options = {}) {
     {
       type: 'input',
       name: 'model',
-      message: 'Model:',
-      validate: (input) => input.trim() !== '' || 'Model is required'
+      message: 'Model (press Enter to use Claude Code default):'
     },
     {
       type: 'confirm',

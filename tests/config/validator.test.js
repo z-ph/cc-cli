@@ -39,7 +39,7 @@ describe('Config Validator', () => {
       expect(result.errors).toContain('api_key');
     });
 
-    it('should fail when model is missing', () => {
+    it('should pass when model is missing (uses Claude Code default)', () => {
       const config = {
         base_url: 'https://api.example.com',
         api_key: 'sk-test'
@@ -47,8 +47,8 @@ describe('Config Validator', () => {
 
       const result = validateModelConfig(config);
 
-      expect(result.valid).toBe(false);
-      expect(result.errors).toContain('model');
+      expect(result.valid).toBe(true);
+      expect(result.errors).toEqual([]);
     });
 
     it('should add empty env object if not provided', () => {
