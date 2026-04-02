@@ -1,10 +1,9 @@
 const { loadConfig, saveConfig, getLocalConfigPath, getGlobalConfigPath } = require('../config/loader');
 const { validateConfigId } = require('../config/validator');
+const { loadEnvRegistry, appendToRegistry, buildEnvChoices, promptEnvValue } = require('../config/env-registry');
+const { maybeSaveToRegistry } = require('./add');
 const { default: inquirer } = require('inquirer');
 const fs = require('fs');
-
-// Reuse common env var definitions from add.js
-const { COMMON_ENV_VARS, buildEnvChoices, promptEnvValue } = require('./add');
 
 async function editCommand(configId, options = {}) {
   const customPath = options?.target;
@@ -105,27 +104,28 @@ async function editCommand(configId, options = {}) {
   } else if (envChoice.action === 'edit') {
     // Show current env vars
     console.log('\nCurrent environment variables:');
+    const registry = loadEnvRegistry();
     const currentKeys = Object.keys(model.env || {});
     if (currentKeys.length === 0) {
       console.log('  (none)');
     } else {
       for (const key of currentKeys) {
-        const varDef = COMMON_ENV_VARS.find(v => v.key === key);
+        const varDef = registry.find(v => v.key === key);
         const desc = varDef ? ` (${varDef.desc})` : '';
         console.log(`  ${key}=${model.env[key]}${desc}`);
       }
     }
 
-    // Select from common vars or custom
-    const envChoices = buildEnvChoices();
+    // Select from registry or custom
     let selecting = true;
     while (selecting) {
+      const choices = buildEnvChoices(registry, model.env || {});
       const selectAnswer = await inquirer.prompt([
         {
           type: 'list',
           name: 'selected',
           message: 'Add/edit environment variable:',
-          choices: envChoices
+          choices
         }
       ]);
 
@@ -137,15 +137,16 @@ async function editCommand(configId, options = {}) {
       if (selectAnswer.selected === '__custom__') {
         const customAnswer = await inquirer.prompt([
           { type: 'input', name: 'key', message: 'Variable name:', validate: (i) => i.trim() !== '' || 'Name is required' },
-          { type: 'input', name: 'value', message: 'Value:', default: model.env[customAnswer?.key] || '' }
+          { type: 'input', name: 'value', message: 'Value:', default: model.env && model.env[customAnswer?.key] || '' }
         ]);
         if (!model.env) model.env = {};
         model.env[customAnswer.key.trim()] = customAnswer.value.trim();
+        await maybeSaveToRegistry(customAnswer.key.trim(), registry);
         continue;
       }
 
-      const varDef = COMMON_ENV_VARS.find(v => v.key === selectAnswer.selected);
-      const value = await promptEnvValue(varDef, model.env[varDef.key]);
+      const varDef = registry.find(v => v.key === selectAnswer.selected);
+      const value = await promptEnvValue(varDef, model.env && model.env[varDef.key]);
       if (value !== null && value !== '') {
         if (!model.env) model.env = {};
         model.env[varDef.key] = value;
