@@ -43,7 +43,33 @@ cc glm5.1
 
 ---
 
+## 配置文件查找规则
+
+CC CLI 按以下优先级查找配置文件：
+
+1. **当前目录**（优先）：`./.claude/models.yaml`
+2. **用户目录**（备选）：`~/.claude/models.yaml`
+
+如果当前目录有配置文件，优先使用；否则使用全局配置。
+
+### 指定自定义配置文件
+
+使用 `-t/--target` 参数指定任意 YAML 文件：
+
+```bash
+cc glm5.1 -t ./project-a/models.yaml     # 使用指定文件启动
+cc list -t /path/to/custom-config.yaml  # 查看指定文件中的配置
+cc add glm5.1 -t ./team-config.yaml     # 添加配置到指定文件
+```
+
+这对于项目特定的配置很有用，可以在项目目录下创建 `.claude/models.yaml`，与代码一起提交到版本控制。
+
+---
+
 ## 命令参考
+
+全局选项：
+- `-t, --target <file>` - 指定自定义配置文件（所有命令都支持）
 
 ### `cc <config-id>`
 启动指定配置的 Claude Code。
@@ -66,12 +92,12 @@ cc list
 Available configurations:
 
   glm5.1
-    baseurl: https://open.bigmodel.cn/api/paas/v4
+    base_url: https://open.bigmodel.cn/api/paas/v4
     model:   glm-5.1
     env:     ANTHROPIC_BASE_URL, ANTHROPIC_AUTH_TOKEN
 
   gpt4
-    baseurl: https://api.openai.com/v1
+    base_url: https://api.openai.com/v1
     model:   gpt-4o
 
 Total: 2 configuration(s)
@@ -130,9 +156,9 @@ settings:
 
 models:
   <config-id>:           # 配置标识名
-    baseurl: <url>       # API 基础地址
-    apikey: <key>        # API 密钥
-    model: <name>        # 模型名称
+    base_url: <url>       # API 基础地址 → ANTHROPIC_BASE_URL
+    api_key: <key>        # API 密钥 → ANTHROPIC_AUTH_TOKEN
+    model: <name>        # 模型名称 → ANTHROPIC_MODEL
     env:                 # 额外环境变量
       KEY: value
 ```
@@ -146,8 +172,8 @@ settings:
 models:
   # 智谱 GLM-5.1
   glm5.1:
-    baseurl: https://open.bigmodel.cn/api/paas/v4
-    apikey: sk-your-key-here
+    base_url: https://open.bigmodel.cn/api/paas/v4
+    api_key: sk-your-key-here
     model: glm-5.1
     env:
       ANTHROPIC_BASE_URL: https://open.bigmodel.cn/api/paas/v4
@@ -155,8 +181,8 @@ models:
 
   # OpenAI GPT-4o
   gpt4o:
-    baseurl: https://api.openai.com/v1
-    apikey: sk-your-key-here
+    base_url: https://api.openai.com/v1
+    api_key: sk-your-key-here
     model: gpt-4o
     env:
       OPENAI_BASE_URL: https://api.openai.com/v1
@@ -164,8 +190,8 @@ models:
 
   # 本地 Ollama
   local:
-    baseurl: http://localhost:11434/v1
-    apikey: ollama
+    base_url: http://localhost:11434/v1
+    api_key: ollama
     model: llama3.1
     env:
       OLLAMA_HOST: http://localhost:11434
@@ -198,8 +224,8 @@ cc local     # 本地模型
 ```yaml
 models:
   myconfig:
-    baseurl: https://api.example.com
-    apikey: sk-xxx
+    base_url: https://api.example.com
+    api_key: sk-xxx
     model: model-name
     env:
       # 自定义头

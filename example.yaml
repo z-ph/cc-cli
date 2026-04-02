@@ -1,6 +1,11 @@
 # Claude Code Launcher CLI - 配置示例（精简版）
 #
 # 复制所需配置到 ~/.claude/models.yaml 并填入你的 API key
+#
+# 字段映射：
+#   base_url  → ANTHROPIC_BASE_URL
+#   api_key   → ANTHROPIC_AUTH_TOKEN
+#   model     → ANTHROPIC_MODEL
 
 settings:
   alias: cc
@@ -8,8 +13,8 @@ settings:
 models:
   # 国内：智谱 GLM
   glm51:
-    baseurl: https://open.bigmodel.cn/api/paas/v4
-    apikey: sk-xxxxxxxx
+    base_url: https://open.bigmodel.cn/api/paas/v4
+    api_key: sk-xxxxxxxx
     model: glm-5.1
     env:
       ANTHROPIC_BASE_URL: https://open.bigmodel.cn/api/paas/v4
@@ -17,8 +22,8 @@ models:
 
   # 国外：OpenAI
   gpt4:
-    baseurl: https://api.openai.com/v1
-    apikey: sk-xxxxxxxx
+    base_url: https://api.openai.com/v1
+    api_key: sk-xxxxxxxx
     model: gpt-4o
     env:
       OPENAI_BASE_URL: https://api.openai.com/v1
@@ -26,16 +31,16 @@ models:
 
   # 本地：Ollama
   local:
-    baseurl: http://localhost:11434/v1
-    apikey: ollama
+    base_url: http://localhost:11434/v1
+    api_key: ollama
     model: llama3.1
     env:
       OLLAMA_HOST: http://localhost:11434
 
   # 代理：OneAPI 转发
   proxy:
-    baseurl: https://oneapi.example.com/v1
-    apikey: sk-xxxxxxxx
+    base_url: https://oneapi.example.com/v1
+    api_key: sk-xxxxxxxx
     model: gpt-4o
     env:
       ANTHROPIC_BASE_URL: https://oneapi.example.com/v1
