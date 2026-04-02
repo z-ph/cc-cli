@@ -30,6 +30,7 @@ program
 program
   .command('list')
   .description('List all configurations')
+  .option('-g, --global', 'operate on global config (~/.claude/models.yaml)')
   .action((options) => {
     listCommand({ ...options, target: options.target || program.opts().target });
   });
@@ -38,6 +39,7 @@ program
 program
   .command('add <config-id>')
   .description('Add a new configuration')
+  .option('-g, --global', 'operate on global config (~/.claude/models.yaml)')
   .action((configId, options) => {
     addCommand(configId, { ...options, target: options.target || program.opts().target });
   });
@@ -46,6 +48,7 @@ program
 program
   .command('remove <config-id>')
   .description('Remove a configuration')
+  .option('-g, --global', 'operate on global config (~/.claude/models.yaml)')
   .action((configId, options) => {
     removeCommand(configId, { ...options, target: options.target || program.opts().target });
   });
@@ -54,6 +57,7 @@ program
 program
   .command('edit <config-id>')
   .description('Edit an existing configuration')
+  .option('-g, --global', 'operate on global config (~/.claude/models.yaml)')
   .action((configId, options) => {
     editCommand(configId, { ...options, target: options.target || program.opts().target });
   });

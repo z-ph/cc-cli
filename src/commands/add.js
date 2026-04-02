@@ -9,20 +9,19 @@ async function addCommand(configId, options = {}) {
   let configPath;
   let config;
 
+  const useGlobal = options?.global;
+
   if (customPath) {
     configPath = customPath;
     config = loadConfig(customPath);
+  } else if (useGlobal) {
+    configPath = getGlobalConfigPath();
+    config = loadConfig();
   } else {
-    // Prefer local config (current directory)
-    const localPath = getLocalConfigPath();
-    const globalPath = getGlobalConfigPath();
-
-    if (fs.existsSync(localPath)) {
-      configPath = localPath;
-      config = loadConfig(localPath);
+    configPath = getLocalConfigPath();
+    if (fs.existsSync(configPath)) {
+      config = loadConfig(configPath);
     } else {
-      // Default to local path if neither exists
-      configPath = localPath;
       config = { settings: { alias: 'cc' }, models: {} };
     }
   }

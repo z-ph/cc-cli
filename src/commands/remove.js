@@ -1,4 +1,4 @@
-const { loadConfig, saveConfig, findConfig, getLocalConfigPath } = require('../config/loader');
+const { loadConfig, saveConfig, getLocalConfigPath, getGlobalConfigPath } = require('../config/loader');
 const fs = require('fs');
 
 function removeCommand(configId, options = {}) {
@@ -7,26 +7,25 @@ function removeCommand(configId, options = {}) {
   let config;
   let configPath;
 
+  const useGlobal = options?.global;
+
   if (customPath) {
     configPath = customPath;
     config = loadConfig(customPath);
+  } else if (useGlobal) {
+    configPath = getGlobalConfigPath();
+    config = loadConfig();
   } else {
-    // Try to find the config (local or global)
-    const result = findConfig(configId);
-    if (!result.config || !result.config.models[configId]) {
-      console.error(`Error: Configuration '${configId}' not found.`);
-      console.log('Searched:');
-      console.log('  1. Current directory: ./.claude/models.yaml');
-      console.log('  2. Home directory: ~/.claude/models.yaml');
-      process.exit(1);
+    configPath = getLocalConfigPath();
+    if (fs.existsSync(configPath)) {
+      config = loadConfig(configPath);
+    } else {
+      config = null;
     }
-    config = result.config;
-    configPath = result.configPath;
   }
 
-  if (!config.models[configId]) {
-    console.error(`Error: Configuration '${configId}' not found.`);
-    console.log('Run "cc list" to see available configurations.');
+  if (!config || !config.models[configId]) {
+    console.error(`Error: Configuration '${configId}' not found in '${configPath}'.`);
     process.exit(1);
   }
 

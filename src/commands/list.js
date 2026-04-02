@@ -3,26 +3,22 @@ const fs = require('fs');
 
 function listCommand(options = {}) {
   const customPath = options?.target;
+  const useGlobal = options?.global;
   let config;
   let configPath;
 
   if (customPath) {
     configPath = customPath;
     config = loadConfig(customPath);
+  } else if (useGlobal) {
+    configPath = getGlobalConfigPath();
+    config = loadConfig();
   } else {
-    // Check local first
-    const localPath = getLocalConfigPath();
-    const globalPath = getGlobalConfigPath();
-
-    if (fs.existsSync(localPath)) {
-      configPath = localPath;
-      config = loadConfig(localPath);
-    } else if (fs.existsSync(globalPath)) {
-      configPath = globalPath;
-      config = loadConfig(globalPath);
+    configPath = getLocalConfigPath();
+    if (fs.existsSync(configPath)) {
+      config = loadConfig(configPath);
     } else {
-      configPath = globalPath;
-      config = loadConfig();
+      config = { settings: { alias: 'cc' }, models: {} };
     }
   }
 
