@@ -34,8 +34,19 @@ async function addCommand(configId, options = {}) {
     process.exit(1);
   }
 
-  // Interactive prompts — ask for model and env vars
+  // Interactive prompts — core fields first
   const answers = await inquirer.prompt([
+    {
+      type: 'input',
+      name: 'baseUrl',
+      message: 'ANTHROPIC_BASE_URL:'
+    },
+    {
+      type: 'password',
+      name: 'authToken',
+      message: 'ANTHROPIC_AUTH_TOKEN:',
+      mask: '*'
+    },
     {
       type: 'input',
       name: 'model',
@@ -44,18 +55,23 @@ async function addCommand(configId, options = {}) {
     {
       type: 'confirm',
       name: 'addEnv',
-      message: 'Add environment variables (ANTHROPIC_BASE_URL, ANTHROPIC_AUTH_TOKEN, etc.)?',
-      default: true
+      message: 'Add other environment variables?',
+      default: false
     }
   ]);
 
   const entry = {};
+  const env = {};
 
+  if (answers.baseUrl.trim()) {
+    env.ANTHROPIC_BASE_URL = answers.baseUrl.trim();
+  }
+  if (answers.authToken.trim()) {
+    env.ANTHROPIC_AUTH_TOKEN = answers.authToken.trim();
+  }
   if (answers.model.trim()) {
     entry.model = answers.model.trim();
   }
-
-  const env = {};
 
   if (answers.addEnv) {
     const registry = loadEnvRegistry();

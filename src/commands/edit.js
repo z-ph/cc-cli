@@ -56,8 +56,21 @@ async function editCommand(configId, options = {}) {
     }
   }
 
-  // Prompt for model
+  // Prompt for core fields
+  const currentEnv = entry.env || {};
   const answers = await inquirer.prompt([
+    {
+      type: 'input',
+      name: 'baseUrl',
+      message: 'ANTHROPIC_BASE_URL:',
+      default: currentEnv.ANTHROPIC_BASE_URL || ''
+    },
+    {
+      type: 'password',
+      name: 'authToken',
+      message: 'ANTHROPIC_AUTH_TOKEN (press Enter to keep current):',
+      mask: '*'
+    },
     {
       type: 'input',
       name: 'model',
@@ -66,37 +79,49 @@ async function editCommand(configId, options = {}) {
     }
   ]);
 
+  if (!entry.env) entry.env = {};
+  if (answers.baseUrl.trim()) {
+    entry.env.ANTHROPIC_BASE_URL = answers.baseUrl.trim();
+  }
+  if (answers.authToken.trim()) {
+    entry.env.ANTHROPIC_AUTH_TOKEN = answers.authToken.trim();
+  }
   if (answers.model.trim()) {
     entry.model = answers.model.trim();
   } else {
     delete entry.model;
   }
 
-  // Handle env vars
+  // Handle other env vars
   const envChoice = await inquirer.prompt([
     {
       type: 'list',
       name: 'action',
-      message: 'Environment variables:',
+      message: 'Other environment variables:',
       choices: [
         { name: 'Keep as is', value: 'keep' },
         { name: 'Edit/add variables', value: 'edit' },
-        { name: 'Clear all', value: 'clear' }
+        { name: 'Clear all (except BASE_URL and AUTH_TOKEN)', value: 'clear' }
       ]
     }
   ]);
 
   if (envChoice.action === 'clear') {
-    delete entry.env;
+    // Keep BASE_URL and AUTH_TOKEN, clear the rest
+    const baseUrl = entry.env.ANTHROPIC_BASE_URL;
+    const authToken = entry.env.ANTHROPIC_AUTH_TOKEN;
+    entry.env = {};
+    if (baseUrl) entry.env.ANTHROPIC_BASE_URL = baseUrl;
+    if (authToken) entry.env.ANTHROPIC_AUTH_TOKEN = authToken;
   } else if (envChoice.action === 'edit') {
-    // Show current env vars
+    // Show current env vars (excluding the two core ones)
     console.log('\nCurrent environment variables:');
     const registry = loadEnvRegistry();
-    const currentKeys = Object.keys(entry.env || {});
-    if (currentKeys.length === 0) {
+    const otherKeys = Object.keys(entry.env || {}).filter(k => k !== 'ANTHROPIC_BASE_URL' && k !== 'ANTHROPIC_AUTH_TOKEN');
+    if (otherKeys.length === 0) {
       console.log('  (none)');
     } else {
-      for (const key of currentKeys) {
+      for (const key of otherKeys) {
         const varDef = registry.find(v => v.key === key);
         const desc = varDef ? ` (${varDef.desc})` : '';
         console.log(`  ${key}=${entry.env[key]}${desc}`);
@@ -126,7 +151,6 @@ async function editCommand(configId, options = {}) {
           { type: 'input', name: 'key', message: 'Variable name:', validate: (i) => i.trim() !== '' || 'Name is required' },
           { type: 'input', name: 'value', message: 'Value:', default: entry.env && entry.env[customAnswer?.key] || '' }
         ]);
-        if (!entry.env) entry.env = {};
         entry.env[customAnswer.key.trim()] = customAnswer.value.trim();
         await maybeSaveToRegistry(customAnswer.key.trim(), registry);
         continue;
@@ -135,7 +159,6 @@ async function editCommand(configId, options = {}) {
       const varDef = registry.find(v => v.key === selectAnswer.selected);
       const value = await promptEnvValue(varDef, entry.env && entry.env[varDef.key]);
       if (value !== null && value !== '') {
-        if (!entry.env) entry.env = {};
         entry.env[varDef.key] = value;
       }
     }
