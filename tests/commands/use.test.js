@@ -85,14 +85,18 @@ describe('Use Command', () => {
     );
   });
 
-  it('should backup existing settings file', () => {
+  it('should backup existing settings as source.json (one-time)', () => {
     const mockConfig = {
       configs: { test: { model: 'gpt-4' } }
     };
 
     findConfig.mockReturnValue({ config: mockConfig, configPath: '/path/to/models.yaml', source: 'local' });
     mergeSettings.mockReturnValue({ model: 'gpt-4' });
-    fs.existsSync.mockReturnValue(true);
+    // .claude dir exists, settings.local.json exists, settings.source.json does NOT
+    fs.existsSync
+      .mockReturnValueOnce(true)   // localDir exists
+      .mockReturnValueOnce(true)   // settings.local.json exists
+      .mockReturnValueOnce(false); // settings.source.json does NOT exist
 
     mockExit.mockImplementation(() => {});
 
@@ -100,7 +104,27 @@ describe('Use Command', () => {
 
     expect(fs.copyFileSync).toHaveBeenCalledWith(
       expect.stringContaining('settings.local.json'),
-      expect.stringContaining('.bak')
+      expect.stringContaining('settings.source.json')
     );
+  });
+
+  it('should not overwrite existing source backup', () => {
+    const mockConfig = {
+      configs: { test: { model: 'gpt-4' } }
+    };
+
+    findConfig.mockReturnValue({ config: mockConfig, configPath: '/path/to/models.yaml', source: 'local' });
+    mergeSettings.mockReturnValue({ model: 'gpt-4' });
+    // Both files exist
+    fs.existsSync
+      .mockReturnValueOnce(true)  // localDir exists
+      .mockReturnValueOnce(true)  // settings.local.json exists
+      .mockReturnValueOnce(true); // settings.source.json already exists
+
+    mockExit.mockImplementation(() => {});
+
+    useCommand('test');
+
+    expect(fs.copyFileSync).not.toHaveBeenCalled();
   });
 });

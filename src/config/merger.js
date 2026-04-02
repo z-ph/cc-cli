@@ -48,10 +48,10 @@ function writeSettingsLocal(mergedSettings) {
     fs.mkdirSync(settingsDir, { recursive: true });
   }
 
-  // Backup existing file
-  if (fs.existsSync(settingsPath)) {
-    const backupPath = path.join(settingsDir, 'settings.local.json.bak');
-    fs.copyFileSync(settingsPath, backupPath);
+  // One-time backup of user's original settings
+  const sourcePath = path.join(settingsDir, 'settings.source.json');
+  if (fs.existsSync(settingsPath) && !fs.existsSync(sourcePath)) {
+    fs.copyFileSync(settingsPath, sourcePath);
   }
 
   fs.writeFileSync(settingsPath, JSON.stringify(mergedSettings, null, 2), 'utf8');

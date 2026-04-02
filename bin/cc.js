@@ -8,6 +8,7 @@ const { removeCommand } = require('../src/commands/remove');
 const { editCommand } = require('../src/commands/edit');
 const { aliasCommand } = require('../src/commands/alias');
 const { useCommand } = require('../src/commands/use');
+const { restoreCommand } = require('../src/commands/restore');
 
 const program = new Command();
 
@@ -78,6 +79,15 @@ program
   .option('-g, --global', 'write to ~/.claude/settings.json instead of ./.claude/settings.local.json')
   .action((configId, options) => {
     useCommand(configId, { ...options, target: options.target || program.opts().target });
+  });
+
+// Restore command
+program
+  .command('restore')
+  .description('Restore settings file from backup (settings.source.json)')
+  .option('-g, --global', 'restore ~/.claude/settings.json instead of ./.claude/settings.local.json')
+  .action((options) => {
+    restoreCommand({ ...options, target: options.target || program.opts().target });
   });
 
 program.parse();

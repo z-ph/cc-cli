@@ -118,15 +118,31 @@ describe('Config Merger', () => {
       );
     });
 
-    it('should backup existing settings file', () => {
-      fs.existsSync.mockReturnValue(true);
+    it('should backup existing settings file once as settings.source.json', () => {
+      // settings.local.json exists, settings.source.json does not
+      fs.existsSync
+        .mockReturnValueOnce(true)   // settingsDir exists
+        .mockReturnValueOnce(true)   // settings.local.json exists
+        .mockReturnValueOnce(false); // settings.source.json does NOT exist
 
       writeSettingsLocal({ model: 'gpt-4' });
 
       expect(fs.copyFileSync).toHaveBeenCalledWith(
         expect.stringContaining('settings.local.json'),
-        expect.stringContaining('settings.local.json.bak')
+        expect.stringContaining('settings.source.json')
       );
+    });
+
+    it('should not overwrite existing source backup', () => {
+      // Both settings.local.json and settings.source.json exist
+      fs.existsSync
+        .mockReturnValueOnce(true)  // settingsDir exists
+        .mockReturnValueOnce(true)  // settings.local.json exists
+        .mockReturnValueOnce(true); // settings.source.json already exists
+
+      writeSettingsLocal({ model: 'gpt-4' });
+
+      expect(fs.copyFileSync).not.toHaveBeenCalled();
     });
   });
 });

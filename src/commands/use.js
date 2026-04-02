@@ -43,10 +43,10 @@ function useCommand(configId, options = {}) {
     }
   }
 
-  // Backup existing file
-  if (fs.existsSync(settingsPath)) {
-    const backupPath = settingsPath + '.bak';
-    fs.copyFileSync(settingsPath, backupPath);
+  // One-time backup of user's original settings
+  const sourcePath = path.join(path.dirname(settingsPath), 'settings.source.json');
+  if (fs.existsSync(settingsPath) && !fs.existsSync(sourcePath)) {
+    fs.copyFileSync(settingsPath, sourcePath);
   }
 
   // Write settings
