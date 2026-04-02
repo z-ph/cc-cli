@@ -39,9 +39,13 @@ models:
     base_url: <url>      # → ANTHROPIC_BASE_URL
     api_key: <key>       # → ANTHROPIC_AUTH_TOKEN
     model: <name>        # → ANTHROPIC_MODEL
-    env:
-      KEY: value
+    env:                 # 自定义环境变量透传（可选）
+      KEY: value         # 这些变量会透传到 Claude Code 进程
 ```
+
+**Environment variables:**
+- `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_MODEL` 由配置自动设置
+- `env` 字段中的自定义变量会透传到 Claude Code 进程，可用于配置 MCP servers、代理等
 
 ## Key Design Decisions
 
