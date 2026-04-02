@@ -28,10 +28,8 @@ cc add glm5.1
 ```
 
 按提示输入：
-- `Base URL`: API 地址（如 `https://open.bigmodel.cn/api/paas/v4`）
-- `API Key`: 你的 API 密钥
-- `Model`: 模型名称（如 `glm-5.1`）
-- 是否需要添加自定义环境变量（可选）
+- `Model`: 模型名称（如 `glm-5.1`，可留空使用 Claude Code 默认值）
+- 是否添加环境变量（`ANTHROPIC_BASE_URL`、`ANTHROPIC_AUTH_TOKEN` 等）
 
 ### 2. 启动 Claude Code
 
@@ -39,7 +37,14 @@ cc add glm5.1
 cc glm5.1
 ```
 
-这会使用你配置的 `glm5.1` 设置启动 Claude Code。
+这会将配置合并写入 `.claude/settings.local.json`，然后启动 Claude Code。
+
+### 3. 切换配置（不启动）
+
+```bash
+cc use glm5.1      # 写入 ./.claude/settings.local.json
+cc use glm5.1 -g   # 写入 ~/.claude/settings.json
+```
 
 ---
 
@@ -62,8 +67,6 @@ cc list -t /path/to/custom-config.yaml  # 查看指定文件中的配置
 cc add glm5.1 -t ./team-config.yaml     # 添加配置到指定文件
 ```
 
-这对于项目特定的配置很有用，可以在项目目录下创建 `.claude/models.yaml`，与代码一起提交到版本控制。
-
 ---
 
 ## 命令参考
@@ -80,6 +83,14 @@ cc gpt4        # 使用 gpt4 配置
 cc local       # 使用本地模型配置
 ```
 
+### `cc use <config-id>`
+将配置应用到 settings 文件，不启动 Claude Code。
+
+```bash
+cc use glm5.1         # 写入 ./.claude/settings.local.json
+cc use glm5.1 -g      # 写入 ~/.claude/settings.json
+```
+
 ### `cc list`
 查看所有已配置的配置项。
 
@@ -89,16 +100,16 @@ cc list
 
 输出示例：
 ```
+Config file: /project/.claude/models.yaml
+
 Available configurations:
 
   glm5.1
-    base_url: https://open.bigmodel.cn/api/paas/v4
-    model:   glm-5.1
-    env:     ANTHROPIC_BASE_URL, ANTHROPIC_AUTH_TOKEN
+    model: glm-5.1
+    env:   ANTHROPIC_BASE_URL, ANTHROPIC_AUTH_TOKEN
 
   gpt4
-    base_url: https://api.openai.com/v1
-    model:   gpt-4o
+    model: gpt-4o
 
 Total: 2 configuration(s)
 ```
@@ -108,6 +119,7 @@ Total: 2 configuration(s)
 
 ```bash
 cc add my-model
+cc add my-model -g    # 添加到全局配置
 ```
 
 配置 ID 规则：
@@ -119,6 +131,7 @@ cc add my-model
 
 ```bash
 cc remove glm5.1
+cc remove glm5.1 -g   # 从全局配置删除
 ```
 
 ### `cc edit <config-id>`
@@ -129,8 +142,6 @@ cc edit glm5.1
 ```
 
 可以修改：
-- Base URL
-- API Key（按回车保持当前值）
 - Model
 - 环境变量（保留/编辑/清空）
 
@@ -146,22 +157,43 @@ cc alias cl      # 将命令改为 `cl`
 
 ## 配置文件
 
-配置文件位置：`~/.claude/models.yaml`
+配置文件位置：`~/.claude/models.yaml`（全局）或 `./.claude/models.yaml`（项目级）
 
 ### 结构说明
 
+配置直接使用 Claude Code 的官方 settings 字段，支持 `base` 定义共享默认值，`configs` 定义多个命名配置。
+
 ```yaml
 settings:
-  alias: cc              # 命令别名
+  alias: cc                # CLI 命令别名（非 Claude Code 字段）
 
-models:
-  <config-id>:           # 配置标识名
-    base_url: <url>       # API 基础地址 → ANTHROPIC_BASE_URL
-    api_key: <key>        # API 密钥 → ANTHROPIC_AUTH_TOKEN
-    model: <name>        # 模型名称 → ANTHROPIC_MODEL
-    env:                 # 额外环境变量
-      KEY: value
+base:                      # 共享默认值，合并到每个 config
+  model: claude-sonnet-4-6
+  env:
+    ANTHROPIC_BASE_URL: https://api.anthropic.com
+  permissions:
+    allow:
+      - "Bash(npm run *)"
+    deny:
+      - "Read(./.env)"
+
+configs:
+  <config-id>:             # 配置标识名
+    model: <name>          # 模型名称（Claude Code 的 model 字段）
+    env:                   # 环境变量（Claude Code 的 env 字段）
+      ANTHROPIC_BASE_URL: <url>
+      ANTHROPIC_AUTH_TOKEN: <key>
+    permissions:           # 权限设置（可选）
+      allow: [...]
+      deny: [...]
 ```
+
+### 合并规则
+
+启动或 `use` 时，`base` 和对应 config 会深度合并：
+- **字符串/数字**：config 覆盖 base
+- **对象**（env、permissions 等）：递归合并
+- **数组**（permissions.allow、permissions.deny 等）：拼接并去重
 
 ### 示例配置
 
@@ -169,11 +201,16 @@ models:
 settings:
   alias: cc
 
-models:
+base:
+  permissions:
+    allow:
+      - "Bash(npm run *)"
+    deny:
+      - "Read(./.env)"
+
+configs:
   # 智谱 GLM-5.1
   glm5.1:
-    base_url: https://open.bigmodel.cn/api/paas/v4
-    api_key: sk-your-key-here
     model: glm-5.1
     env:
       ANTHROPIC_BASE_URL: https://open.bigmodel.cn/api/paas/v4
@@ -181,20 +218,20 @@ models:
 
   # OpenAI GPT-4o
   gpt4o:
-    base_url: https://api.openai.com/v1
-    api_key: sk-your-key-here
     model: gpt-4o
     env:
-      OPENAI_BASE_URL: https://api.openai.com/v1
+      ANTHROPIC_BASE_URL: https://api.openai.com/v1
       ANTHROPIC_AUTH_TOKEN: sk-your-key-here
+    permissions:
+      allow:
+        - "Bash(*)"
 
   # 本地 Ollama
   local:
-    base_url: http://localhost:11434/v1
-    api_key: ollama
     model: llama3.1
     env:
-      OLLAMA_HOST: http://localhost:11434
+      ANTHROPIC_BASE_URL: http://localhost:11434/v1
+      ANTHROPIC_AUTH_TOKEN: ollama
 ```
 
 ---
@@ -218,21 +255,26 @@ cc gpt4o     # OpenAI
 cc local     # 本地模型
 ```
 
+或使用 `use` 命令只切换配置不启动：
+```bash
+cc use glm5.1
+```
+
+### Q: `cc <config-id>` 和 `cc use <config-id>` 有什么区别？
+- `cc <config-id>`：写入 settings 文件并启动 Claude Code
+- `cc use <config-id>`：只写入 settings 文件，不启动
+
 ### Q: 环境变量如何使用？
-在 `env` 部分添加任意键值对，会全部透传给 Claude Code 进程：
+在 `env` 字段中添加任意键值对，会写入 Claude Code 的 settings 文件：
 
 ```yaml
-models:
+configs:
   myconfig:
-    base_url: https://api.example.com
-    api_key: sk-xxx
     model: model-name
     env:
-      # 自定义头
-      CUSTOM_HEADER: value
-      # 代理设置
+      ANTHROPIC_BASE_URL: https://api.example.com
+      ANTHROPIC_AUTH_TOKEN: sk-xxx
       HTTP_PROXY: http://127.0.0.1:7890
-      # Claude Code 调试
       CLAUDE_CODE_DEBUG: "true"
 ```
 
@@ -243,19 +285,6 @@ cc alias ccl    # 改用 ccl 命令
 ```
 
 然后重新创建 npm 链接（如需）。
-
----
-
-## 配置文件示例
-
-项目目录下的 `example.yaml` 提供了 4 个常用配置模板：
-
-- `glm4` - 智谱 GLM
-- `gpt4` - OpenAI GPT
-- `local` - 本地 Ollama
-- `proxy` - OneAPI 转发
-
-复制需要的配置到 `~/.claude/models.yaml` 并填入你的 API key。
 
 ---
 
