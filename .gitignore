@@ -1,3 +1,22 @@
+# Dependencies
 node_modules/
-*.log
+
+# Test coverage
+coverage/
+
+# Local Claude configuration (contains API keys)
+.claude/models.yaml
+.claude/settings.local.json
+
+# OS files
 .DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
