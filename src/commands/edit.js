@@ -3,6 +3,9 @@ const { validateConfigId } = require('../config/validator');
 const { default: inquirer } = require('inquirer');
 const fs = require('fs');
 
+// Reuse common env var definitions from add.js
+const { COMMON_ENV_VARS, buildEnvChoices, promptEnvValue } = require('./add');
+
 async function editCommand(configId, options = {}) {
   const customPath = options?.target;
 
@@ -107,37 +110,46 @@ async function editCommand(configId, options = {}) {
       console.log('  (none)');
     } else {
       for (const key of currentKeys) {
-        console.log(`  ${key}=${model.env[key]}`);
+        const varDef = COMMON_ENV_VARS.find(v => v.key === key);
+        const desc = varDef ? ` (${varDef.desc})` : '';
+        console.log(`  ${key}=${model.env[key]}${desc}`);
       }
     }
 
-    // Add new ones
-    let addingMore = true;
-    while (addingMore) {
-      const envAnswer = await inquirer.prompt([
+    // Select from common vars or custom
+    const envChoices = buildEnvChoices();
+    let selecting = true;
+    while (selecting) {
+      const selectAnswer = await inquirer.prompt([
         {
-          type: 'input',
-          name: 'key',
-          message: 'Environment variable name (or press Enter to finish):'
+          type: 'list',
+          name: 'selected',
+          message: 'Add/edit environment variable:',
+          choices: envChoices
         }
       ]);
 
-      if (envAnswer.key.trim() === '') {
-        addingMore = false;
-        break;
+      if (selectAnswer.selected === '__done__') {
+        selecting = false;
+        continue;
       }
 
-      const valueAnswer = await inquirer.prompt([
-        {
-          type: 'input',
-          name: 'value',
-          message: 'Value:',
-          default: model.env[envAnswer.key] || ''
-        }
-      ]);
+      if (selectAnswer.selected === '__custom__') {
+        const customAnswer = await inquirer.prompt([
+          { type: 'input', name: 'key', message: 'Variable name:', validate: (i) => i.trim() !== '' || 'Name is required' },
+          { type: 'input', name: 'value', message: 'Value:', default: model.env[customAnswer?.key] || '' }
+        ]);
+        if (!model.env) model.env = {};
+        model.env[customAnswer.key.trim()] = customAnswer.value.trim();
+        continue;
+      }
 
-      if (!model.env) model.env = {};
-      model.env[envAnswer.key.trim()] = valueAnswer.value;
+      const varDef = COMMON_ENV_VARS.find(v => v.key === selectAnswer.selected);
+      const value = await promptEnvValue(varDef, model.env[varDef.key]);
+      if (value !== null && value !== '') {
+        if (!model.env) model.env = {};
+        model.env[varDef.key] = value;
+      }
     }
   }
 
