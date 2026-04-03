@@ -113,6 +113,25 @@ profiles:                # 统一的配置方案
 3. 生成 `settings.<id>.json` 到 models.yaml 所在的 `.claude/` 目录下
 4. 使用 `claude --settings settings.<id>.json` 启动
 
+### Settings 合并与优先级
+
+`cc <id>` 通过 `--settings` 传入 profile 配置，但 Claude Code 仍会自动加载以下三个内置层级：
+
+| 层级 | 文件路径 | 说明 |
+|------|----------|------|
+| 1（最高） | `--settings` 传入的文件 | `cc <id>` 生成的 `settings.<id>.json` |
+| 2 | `.claude/settings.local.json` | 项目本地设置（不提交到 git） |
+| 3 | `.claude/settings.json` | 项目共享设置（提交到 git） |
+| 4（最低） | `~/.claude/settings.json` | 全局用户设置 |
+
+**合并规则：**
+
+- **标量值**（如 `model`、`theme`）：高优先级覆盖低优先级，`--settings` 传入的 profile 会覆盖项目级和全局设置
+- **数组值**（如 `permissions.allow`、`permissions.deny`）：所有层级**合并拼接并去重**，不会互相覆盖。例如全局允许 `Bash(npm run *)`，profile 允许 `Bash(git:*)`，两者同时生效
+- **对象值**：深度合并，同路径的键高优先级覆盖
+
+> **注意：** `permissions.deny` 的规则在运行时优先于 `allow`。即使 profile 的 `allow` 允许了某操作，如果其他层级的 `deny` 包含该操作，仍会被拒绝。
+
 ### settings 文件位置
 
 | models.yaml 来源 | settings 文件路径 |
