@@ -62,6 +62,10 @@ profiles:
 - `cc restore` restores from backup
 - Merge with source on each `use`: `deepMerge(sourceSettings, profile)`
 
+## Workflow Rules
+
+- **任何需求（新功能、改动、修复）都必须先在 `PRD/` 目录下编写 PRD 文档**，描述背景、目标、方案，经确认后再动手写代码。
+
 ## Key Design Decisions
 
 - No field mapping — env vars stored with their real names under `env` sub-object

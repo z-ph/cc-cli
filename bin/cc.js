@@ -99,6 +99,7 @@ program
   .command('parse <settings-path> <profile-id>')
   .description('Parse a settings JSON file into a profile')
   .option('-g, --global', 'save to global config (~/.claude/models.yaml)')
+  .option('-b, --base', 'save as base config instead of profile')
   .option('-c, --copy', 'copy YAML to clipboard instead of saving to config')
   .action((settingsPath, profileId, options) => {
     parseCommand(settingsPath, profileId, { ...options, target: options.target || program.opts().target });

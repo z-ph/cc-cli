@@ -4,6 +4,7 @@ const { execSync } = require('child_process');
 const yaml = require('js-yaml');
 const { loadConfig, saveConfig, getLocalConfigPath, getGlobalConfigPath } = require('../config/loader');
 const { validateConfigId } = require('../config/validator');
+const { deepMerge } = require('../config/merger');
 const { default: inquirer } = require('inquirer');
 
 function copyToClipboard(text) {
@@ -66,6 +67,16 @@ function parseCommand(settingsPath, profileId, options = {}) {
     } else {
       config = { settings: { alias: 'cc' }, base: {}, profiles: {} };
     }
+  }
+
+  // Base mode: merge into config.base
+  if (options.base) {
+    const existingBase = config.base || {};
+    config.base = deepMerge(existingBase, settings);
+    saveConfig(config, configPath);
+    console.log(`Parsed '${resolvedPath}' into base config.`);
+    console.log(`Saved to: ${configPath}`);
+    return;
   }
 
   // Check for conflict
