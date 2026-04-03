@@ -31,10 +31,11 @@ function launchCommand(profileId, options) {
   fs.writeFileSync(settingsFile, JSON.stringify(profile, null, 2), 'utf8');
 
   // Spawn claude with --settings flag
-  const claudeProcess = spawn('claude', ['--settings', settingsFile], {
-    stdio: 'inherit',
-    shell: true
-  });
+  const shell = process.platform === 'win32';
+  const args = ['--settings', settingsFile];
+  const claudeProcess = shell
+    ? spawn(`claude ${args.join(' ')}`, { stdio: 'inherit', shell: true })
+    : spawn('claude', args, { stdio: 'inherit' });
 
   claudeProcess.on('exit', (code) => {
     process.exit(code);
