@@ -1,6 +1,6 @@
 const { loadConfig, saveConfig, getLocalConfigPath, getGlobalConfigPath } = require('../config/loader');
 const { validateConfigId } = require('../config/validator');
-const { loadEnvRegistry, appendToRegistry, buildEnvChoices, promptEnvValue, BUILTIN_ENV_VARS } = require('../config/env-registry');
+const { loadEnvRegistry, appendToRegistry, buildAutocompleteSource, promptEnvValue, BUILTIN_ENV_VARS } = require('../config/env-registry');
 const { deepMerge } = require('../config/merger');
 const { default: inquirer } = require('inquirer');
 const fs = require('fs');
@@ -98,9 +98,9 @@ async function addCommand(profileId, options = {}) {
       const registry = loadEnvRegistry();
       let selecting = true;
       while (selecting) {
-        const choices = buildEnvChoices(registry, env);
+        const source = buildAutocompleteSource(registry, env);
         const selectAnswer = await inquirer.prompt([
-          { type: 'list', name: 'selected', message: 'Add environment variable:', choices }
+          { type: 'autocomplete', name: 'selected', message: 'Add environment variable (search or browse):', source, pageSize: 15 }
         ]);
         if (selectAnswer.selected === '__done__') { selecting = false; continue; }
         if (selectAnswer.selected === '__custom__') {
@@ -242,13 +242,14 @@ async function addCommand(profileId, options = {}) {
     const registry = loadEnvRegistry();
     let selecting = true;
     while (selecting) {
-      const choices = buildEnvChoices(registry, env);
+      const source = buildAutocompleteSource(registry, env);
       const selectAnswer = await inquirer.prompt([
         {
-          type: 'list',
+          type: 'autocomplete',
           name: 'selected',
-          message: 'Add environment variable:',
-          choices
+          message: 'Add environment variable (search or browse):',
+          source,
+          pageSize: 15
         }
       ]);
 
