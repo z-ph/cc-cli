@@ -1,6 +1,7 @@
 const { loadConfig, saveConfig, getLocalConfigPath, getGlobalConfigPath } = require('../config/loader');
 const { validateConfigId } = require('../config/validator');
 const { loadEnvRegistry, appendToRegistry, buildEnvChoices, promptEnvValue, BUILTIN_ENV_VARS } = require('../config/env-registry');
+const { deepMerge } = require('../config/merger');
 const { default: inquirer } = require('inquirer');
 const fs = require('fs');
 
@@ -25,6 +26,138 @@ async function addCommand(profileId, options = {}) {
       config = { settings: { alias: 'cc' }, profiles: {} };
     }
   }
+
+  // --- base mode ---
+  if (options.base) {
+    const existingBase = config.base || {};
+
+    // Parse source settings file if provided (reuse for base pre-fill)
+    let sourceEnv = {};
+    let sourceSettings = {};
+    const sourcePath = options?.source;
+    if (sourcePath) {
+      const resolvedSource = require('path').resolve(sourcePath);
+      if (!fs.existsSync(resolvedSource)) {
+        console.error(`Error: Source file '${resolvedSource}' not found.`);
+        process.exit(1);
+      }
+      try {
+        const raw = JSON.parse(fs.readFileSync(resolvedSource, 'utf8'));
+        sourceEnv = raw.env || {};
+        const { env, ...rest } = raw;
+        sourceSettings = rest;
+      } catch (e) {
+        console.error(`Error: Failed to parse source file: ${e.message}`);
+        process.exit(1);
+      }
+    }
+
+    // Interactive prompts — core env vars
+    const envAnswers = await inquirer.prompt([
+      {
+        type: 'input',
+        name: 'baseUrl',
+        message: 'ANTHROPIC_BASE_URL (optional, enter to skip):',
+        ...(sourceEnv.ANTHROPIC_BASE_URL ? { default: sourceEnv.ANTHROPIC_BASE_URL } : {})
+      },
+      {
+        type: 'password',
+        name: 'authToken',
+        message: 'ANTHROPIC_AUTH_TOKEN (optional, enter to skip):',
+        mask: '*'
+      },
+      {
+        type: 'input',
+        name: 'model',
+        message: 'ANTHROPIC_MODEL (optional, enter to skip):',
+        ...(sourceEnv.ANTHROPIC_MODEL ? { default: sourceEnv.ANTHROPIC_MODEL } : {})
+      }
+    ]);
+
+    const env = {};
+    if (envAnswers.baseUrl.trim()) env.ANTHROPIC_BASE_URL = envAnswers.baseUrl.trim();
+    if (envAnswers.authToken.trim()) env.ANTHROPIC_AUTH_TOKEN = envAnswers.authToken.trim();
+    if (envAnswers.model.trim()) env.ANTHROPIC_MODEL = envAnswers.model.trim();
+
+    // Pre-fill non-core vars from source
+    const coreKeys = ['ANTHROPIC_BASE_URL', 'ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_MODEL'];
+    for (const [key, value] of Object.entries(sourceEnv)) {
+      if (!coreKeys.includes(key)) env[key] = value;
+    }
+
+    const addEnvAnswer = await inquirer.prompt([
+      {
+        type: 'confirm',
+        name: 'addEnv',
+        message: 'Add other environment variables?',
+        default: Object.keys(sourceEnv).some(k => !coreKeys.includes(k)) || false
+      }
+    ]);
+
+    if (addEnvAnswer.addEnv) {
+      const registry = loadEnvRegistry();
+      let selecting = true;
+      while (selecting) {
+        const choices = buildEnvChoices(registry, env);
+        const selectAnswer = await inquirer.prompt([
+          { type: 'list', name: 'selected', message: 'Add environment variable:', choices }
+        ]);
+        if (selectAnswer.selected === '__done__') { selecting = false; continue; }
+        if (selectAnswer.selected === '__custom__') {
+          const customAnswer = await inquirer.prompt([
+            { type: 'input', name: 'key', message: 'Variable name:', validate: (i) => i.trim() !== '' || 'Name is required' },
+            { type: 'input', name: 'value', message: 'Value:' }
+          ]);
+          if (customAnswer.value.trim() !== '') {
+            env[customAnswer.key.trim()] = customAnswer.value.trim();
+            await maybeSaveToRegistry(customAnswer.key.trim(), registry);
+          }
+          continue;
+        }
+        const varDef = registry.find(v => v.key === selectAnswer.selected);
+        const value = await promptEnvValue(varDef, env[varDef.key]);
+        if (value !== null && value !== '') env[varDef.key] = value;
+      }
+    }
+
+    // Build base object
+    const base = {};
+    if (Object.keys(env).length > 0) base.env = env;
+
+    const sourcePermAllow = ((sourceSettings.permissions || {}).allow || []).join(', ');
+    const sourcePermDeny = ((sourceSettings.permissions || {}).deny || []).join(', ');
+    const settingsAnswers = await inquirer.prompt([
+      { type: 'input', name: 'permissionsAllow', message: 'Permissions allow (comma-separated, empty to skip):', ...(sourcePermAllow ? { default: sourcePermAllow } : {}) },
+      { type: 'input', name: 'permissionsDeny', message: 'Permissions deny (comma-separated, empty to skip):', ...(sourcePermDeny ? { default: sourcePermDeny } : {}) },
+      { type: 'confirm', name: 'addMore', message: 'Add other settings fields as JSON?', default: Object.keys(sourceSettings).some(k => k !== 'permissions') || false }
+    ]);
+
+    if (settingsAnswers.permissionsAllow.trim() || settingsAnswers.permissionsDeny.trim()) {
+      base.permissions = {};
+      if (settingsAnswers.permissionsAllow.trim()) base.permissions.allow = settingsAnswers.permissionsAllow.trim().split(',').map(s => s.trim()).filter(Boolean);
+      if (settingsAnswers.permissionsDeny.trim()) base.permissions.deny = settingsAnswers.permissionsDeny.trim().split(',').map(s => s.trim()).filter(Boolean);
+    }
+
+    for (const [key, value] of Object.entries(sourceSettings)) {
+      if (key !== 'permissions' && key !== 'env') base[key] = value;
+    }
+
+    if (settingsAnswers.addMore) {
+      const jsonAnswer = await inquirer.prompt([
+        { type: 'editor', name: 'customJson', message: 'Enter additional settings as JSON:', default: JSON.stringify(base, null, 2) }
+      ]);
+      if (jsonAnswer.customJson && jsonAnswer.customJson.trim()) {
+        try { Object.assign(base, JSON.parse(jsonAnswer.customJson)); }
+        catch (e) { console.error('Error: Invalid JSON. Skipping custom settings.'); }
+      }
+    }
+
+    config.base = deepMerge(existingBase, base);
+    saveConfig(config, configPath);
+    console.log(`Base config updated in '${configPath}'.`);
+    return;
+  }
+  // --- end base mode ---
 
   // Validate profile ID
   const idValidation = validateConfigId(profileId, config.profiles || {});

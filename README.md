@@ -1,4 +1,4 @@
-# CC CLI 用户手册
+# CC CLI 使用手册
 
 快速启动不同配置的 Claude Code 命令行工具。
 
@@ -7,15 +7,10 @@
 ## 安装
 
 ```bash
-# 进入项目目录
-cd /path/to/cli
-
-# 安装依赖
-npm install
-
-# 创建全局链接
-npm link
+npm i -g @zphhpzzph/cc-cli@latest
 ```
+
+> **项目地址：** [https://github.com/zphhpzzph/cc-cli](https://github.com/zphhpzzph/cc-cli) — 可下载源码查看或参与贡献
 
 ---
 
@@ -24,8 +19,11 @@ npm link
 ### 1. 添加配置
 
 ```bash
-cc add glm51
+cc add glm51       # 默认保存到当前项目 ./claude/models.yaml
+cc add glm51 -g    # 推荐保存到全局 ~/.claude/models.yaml
 ```
+
+> **注意：** `cc add` 默认作用域为当前项目目录。推荐使用 `-g` 参数将配置添加到全局，这样在任意目录下都可以使用该配置。
 
 按提示输入：
 - `ANTHROPIC_BASE_URL`: API 地址
@@ -175,8 +173,7 @@ cc alias ccl    # 改用 ccl 命令
 ## 卸载
 
 ```bash
-# 取消全局链接
-npm unlink -g cc-cli
+npm uninstall -g @zphhpzzph/cc-cli
 
 # 删除配置文件（可选）
 rm ~/.claude/models.yaml

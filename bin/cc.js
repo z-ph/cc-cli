@@ -44,6 +44,7 @@ program
   .description('Add a new profile')
   .option('-g, --global', 'operate on global config (~/.claude/models.yaml)')
   .option('-s, --source <file>', 'import from a settings JSON file')
+  .option('-b, --base', 'edit base config instead of a profile')
   .action((profileId, options) => {
     addCommand(profileId, { ...options, target: options.target || program.opts().target });
   });
@@ -62,6 +63,7 @@ program
   .command('edit <profile-id>')
   .description('Edit an existing profile')
   .option('-g, --global', 'operate on global config (~/.claude/models.yaml)')
+  .option('-b, --base', 'edit base config instead of a profile')
   .action((profileId, options) => {
     editCommand(profileId, { ...options, target: options.target || program.opts().target });
   });

@@ -25,7 +25,41 @@ async function editCommand(profileId, options = {}) {
     }
   }
 
-  if (!config || !config.profiles || !config.profiles[profileId]) {
+  if (!config) {
+    console.error(`Error: Config not found at '${configPath}'.`);
+    process.exit(1);
+  }
+
+  // --- base mode ---
+  if (options.base) {
+    const entry = config.base || {};
+    console.log(`Editing base config from: ${configPath}`);
+
+    const editAnswer = await inquirer.prompt([
+      {
+        type: 'editor',
+        name: 'baseJson',
+        message: 'Edit base config (JSON):',
+        default: JSON.stringify(entry, null, 2)
+      }
+    ]);
+
+    let parsed;
+    try {
+      parsed = JSON.parse(editAnswer.baseJson);
+    } catch (e) {
+      console.error('Error: Invalid JSON. No changes saved.');
+      process.exit(1);
+    }
+
+    config.base = parsed;
+    saveConfig(config, configPath);
+    console.log(`Base config updated in '${configPath}'.`);
+    return;
+  }
+  // --- end base mode ---
+
+  if (!config.profiles || !config.profiles[profileId]) {
     console.error(`Error: Profile '${profileId}' not found in '${configPath}'.`);
     process.exit(1);
   }
