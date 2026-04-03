@@ -78,9 +78,10 @@ program
 
 // Use command (applies profile to settings file without launching)
 program
-  .command('use <profile-id>')
+  .command('use [profile-id]')
   .description('Apply a profile to settings file without launching')
   .option('-g, --global', 'write to ~/.claude/settings.json instead of ./.claude/settings.local.json')
+  .option('-b, --base', 'apply base config instead of a profile')
   .action((profileId, options) => {
     useCommand(profileId, { ...options, target: options.target || program.opts().target });
   });
@@ -96,7 +97,7 @@ program
 
 // Parse command: import settings JSON as a profile
 program
-  .command('parse <settings-path> <profile-id>')
+  .command('parse <settings-path> [profile-id]')
   .description('Parse a settings JSON file into a profile')
   .option('-g, --global', 'save to global config (~/.claude/models.yaml)')
   .option('-b, --base', 'save as base config instead of profile')

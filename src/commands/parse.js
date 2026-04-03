@@ -23,6 +23,12 @@ function copyToClipboard(text) {
 function parseCommand(settingsPath, profileId, options = {}) {
   const resolvedPath = path.resolve(settingsPath);
 
+  // profile-id is required unless using --base
+  if (!profileId && !options.base && !options.copy) {
+    console.error('Error: profile-id is required (unless using --base)');
+    process.exit(1);
+  }
+
   if (!fs.existsSync(resolvedPath)) {
     console.error(`Error: File '${resolvedPath}' not found.`);
     process.exit(1);

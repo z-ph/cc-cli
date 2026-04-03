@@ -1,23 +1,54 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { findProfile } = require('../config/loader');
+const { findProfile, loadConfig, getLocalConfigPath, getGlobalConfigPath } = require('../config/loader');
 const { deepMerge } = require('../config/merger');
 
 function useCommand(profileId, options = {}) {
-  const { profile, configPath, source } = findProfile(profileId, options?.target);
+  let profile;
 
-  if (!profile) {
-    if (source === 'custom') {
-      console.error(`Error: Profile '${profileId}' not found in '${configPath}'.`);
+  if (options.base) {
+    // Load base config directly
+    const customPath = options?.target;
+    let config;
+
+    if (customPath) {
+      config = loadConfig(customPath);
     } else {
-      console.error(`Error: Profile '${profileId}' not found.`);
-      console.log('Searched:');
-      console.log('  1. Current directory: ./.claude/models.yaml');
-      console.log('  2. Home directory: ~/.claude/models.yaml');
-      console.log('Run "cc list" to see available profiles.');
+      const localPath = getLocalConfigPath();
+      if (fs.existsSync(localPath)) {
+        config = loadConfig(localPath);
+      } else {
+        config = loadConfig();
+      }
     }
-    process.exit(1);
+
+    profile = config.base;
+    if (!profile || Object.keys(profile).length === 0) {
+      console.error('Error: No base config found.');
+      console.log('Run "cc add -b" or "cc parse <file> -b" to create a base config first.');
+      process.exit(1);
+    }
+  } else {
+    if (!profileId) {
+      console.error('Error: profile-id is required (unless using --base)');
+      process.exit(1);
+    }
+    const result = findProfile(profileId, options?.target);
+    profile = result.profile;
+
+    if (!profile) {
+      if (result.source === 'custom') {
+        console.error(`Error: Profile '${profileId}' not found in '${result.configPath}'.`);
+      } else {
+        console.error(`Error: Profile '${profileId}' not found.`);
+        console.log('Searched:');
+        console.log('  1. Current directory: ./.claude/models.yaml');
+        console.log('  2. Home directory: ~/.claude/models.yaml');
+        console.log('Run "cc list" to see available profiles.');
+      }
+      process.exit(1);
+    }
   }
 
   // Determine target settings path
@@ -54,7 +85,7 @@ function useCommand(profileId, options = {}) {
   // Write settings
   fs.writeFileSync(settingsPath, JSON.stringify(finalSettings, null, 2), 'utf8');
 
-  console.log(`Profile '${profileId}' applied to: ${settingsPath}`);
+  console.log(`${options.base ? 'Base config' : `Profile '${profileId}'`} applied to: ${settingsPath}`);
 }
 
 module.exports = { useCommand };
