@@ -4,7 +4,7 @@ const { loadEnvRegistry, appendToRegistry, buildEnvChoices, promptEnvValue, BUIL
 const { default: inquirer } = require('inquirer');
 const fs = require('fs');
 
-async function addCommand(configId, options = {}) {
+async function addCommand(profileId, options = {}) {
   const customPath = options?.target;
   const useGlobal = options?.global;
 
@@ -22,12 +22,12 @@ async function addCommand(configId, options = {}) {
     if (fs.existsSync(configPath)) {
       config = loadConfig(configPath);
     } else {
-      config = { settings: { alias: 'cc' }, envs: {}, configs: {} };
+      config = { settings: { alias: 'cc' }, profiles: {} };
     }
   }
 
-  // Validate config ID
-  const idValidation = validateConfigId(configId, config.envs || {});
+  // Validate profile ID
+  const idValidation = validateConfigId(profileId, config.profiles || {});
   if (!idValidation.valid) {
     console.error(`Error: ${idValidation.error}`);
     process.exit(1);
@@ -35,6 +35,7 @@ async function addCommand(configId, options = {}) {
 
   // Parse source settings file if provided
   let sourceEnv = {};
+  let sourceSettings = {};
   const sourcePath = options?.source;
   if (sourcePath) {
     const resolvedSource = require('path').resolve(sourcePath);
@@ -43,16 +44,18 @@ async function addCommand(configId, options = {}) {
       process.exit(1);
     }
     try {
-      const sourceSettings = JSON.parse(fs.readFileSync(resolvedSource, 'utf8'));
-      sourceEnv = sourceSettings.env || {};
+      const raw = JSON.parse(fs.readFileSync(resolvedSource, 'utf8'));
+      sourceEnv = raw.env || {};
+      const { env, ...rest } = raw;
+      sourceSettings = rest;
     } catch (e) {
       console.error(`Error: Failed to parse source file: ${e.message}`);
       process.exit(1);
     }
   }
 
-  // Interactive prompts — core env vars (optional, empty = not injected)
-  const answers = await inquirer.prompt([
+  // Interactive prompts — core env vars (optional, empty = skip)
+  const envAnswers = await inquirer.prompt([
     {
       type: 'input',
       name: 'baseUrl',
@@ -70,25 +73,19 @@ async function addCommand(configId, options = {}) {
       name: 'model',
       message: 'ANTHROPIC_MODEL (optional, enter to skip):',
       ...(sourceEnv.ANTHROPIC_MODEL ? { default: sourceEnv.ANTHROPIC_MODEL } : {})
-    },
-    {
-      type: 'confirm',
-      name: 'addEnv',
-      message: 'Add other environment variables?',
-      default: Object.keys(sourceEnv).some(k => !['ANTHROPIC_BASE_URL', 'ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_MODEL'].includes(k)) || false
     }
   ]);
 
   const env = {};
 
-  if (answers.baseUrl.trim()) {
-    env.ANTHROPIC_BASE_URL = answers.baseUrl.trim();
+  if (envAnswers.baseUrl.trim()) {
+    env.ANTHROPIC_BASE_URL = envAnswers.baseUrl.trim();
   }
-  if (answers.authToken.trim()) {
-    env.ANTHROPIC_AUTH_TOKEN = answers.authToken.trim();
+  if (envAnswers.authToken.trim()) {
+    env.ANTHROPIC_AUTH_TOKEN = envAnswers.authToken.trim();
   }
-  if (answers.model.trim()) {
-    env.ANTHROPIC_MODEL = answers.model.trim();
+  if (envAnswers.model.trim()) {
+    env.ANTHROPIC_MODEL = envAnswers.model.trim();
   }
 
   // Pre-fill non-core vars from source
@@ -99,7 +96,16 @@ async function addCommand(configId, options = {}) {
     }
   }
 
-  if (answers.addEnv) {
+  const addEnvAnswer = await inquirer.prompt([
+    {
+      type: 'confirm',
+      name: 'addEnv',
+      message: 'Add other environment variables?',
+      default: Object.keys(sourceEnv).some(k => !coreKeys.includes(k)) || false
+    }
+  ]);
+
+  if (addEnvAnswer.addEnv) {
     const registry = loadEnvRegistry();
     let selecting = true;
     while (selecting) {
@@ -138,13 +144,81 @@ async function addCommand(configId, options = {}) {
     }
   }
 
+  // Build profile: env sub-object + other settings fields
+  const profile = {};
+
+  if (Object.keys(env).length > 0) {
+    profile.env = env;
+  }
+
+  // Prompt for settings fields (permissions, etc.)
+  const sourcePermAllow = ((sourceSettings.permissions || {}).allow || []).join(', ');
+  const sourcePermDeny = ((sourceSettings.permissions || {}).deny || []).join(', ');
+
+  const settingsAnswers = await inquirer.prompt([
+    {
+      type: 'input',
+      name: 'permissionsAllow',
+      message: 'Permissions allow (comma-separated, empty to skip):',
+      ...(sourcePermAllow ? { default: sourcePermAllow } : {})
+    },
+    {
+      type: 'input',
+      name: 'permissionsDeny',
+      message: 'Permissions deny (comma-separated, empty to skip):',
+      ...(sourcePermDeny ? { default: sourcePermDeny } : {})
+    },
+    {
+      type: 'confirm',
+      name: 'addMore',
+      message: 'Add other settings fields as JSON?',
+      default: Object.keys(sourceSettings).some(k => k !== 'permissions') || false
+    }
+  ]);
+
+  if (settingsAnswers.permissionsAllow.trim() || settingsAnswers.permissionsDeny.trim()) {
+    profile.permissions = {};
+    if (settingsAnswers.permissionsAllow.trim()) {
+      profile.permissions.allow = settingsAnswers.permissionsAllow.trim().split(',').map(s => s.trim()).filter(Boolean);
+    }
+    if (settingsAnswers.permissionsDeny.trim()) {
+      profile.permissions.deny = settingsAnswers.permissionsDeny.trim().split(',').map(s => s.trim()).filter(Boolean);
+    }
+  }
+
+  // Merge non-permissions, non-env fields from source
+  for (const [key, value] of Object.entries(sourceSettings)) {
+    if (key !== 'permissions' && key !== 'env') {
+      profile[key] = value;
+    }
+  }
+
+  if (settingsAnswers.addMore) {
+    const jsonAnswer = await inquirer.prompt([
+      {
+        type: 'editor',
+        name: 'customJson',
+        message: 'Enter additional settings as JSON:',
+        default: JSON.stringify(profile, null, 2)
+      }
+    ]);
+    if (jsonAnswer.customJson && jsonAnswer.customJson.trim()) {
+      try {
+        const custom = JSON.parse(jsonAnswer.customJson);
+        Object.assign(profile, custom);
+      } catch (e) {
+        console.error('Error: Invalid JSON. Skipping custom settings.');
+      }
+    }
+  }
+
   // Save
-  if (!config.envs) config.envs = {};
-  config.envs[configId] = env;
+  if (!config.profiles) config.profiles = {};
+  config.profiles[profileId] = profile;
   saveConfig(config, configPath);
 
-  console.log(`Env '${configId}' added successfully to '${configPath}'.`);
-  console.log(`Run 'cc ${configId}' to use it.`);
+  console.log(`Profile '${profileId}' added successfully to '${configPath}'.`);
+  console.log(`Run 'cc ${profileId}' to use it.`);
 }
 
 async function maybeSaveToRegistry(key, currentRegistry) {

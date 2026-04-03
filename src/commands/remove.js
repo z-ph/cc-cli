@@ -1,13 +1,12 @@
 const { loadConfig, saveConfig, getLocalConfigPath, getGlobalConfigPath } = require('../config/loader');
 const fs = require('fs');
 
-function removeCommand(configId, options = {}) {
+function removeCommand(profileId, options = {}) {
   const customPath = options?.target;
+  const useGlobal = options?.global;
 
   let config;
   let configPath;
-
-  const useGlobal = options?.global;
 
   if (customPath) {
     configPath = customPath;
@@ -24,15 +23,15 @@ function removeCommand(configId, options = {}) {
     }
   }
 
-  if (!config || !config.envs || !config.envs[configId]) {
-    console.error(`Error: Env '${configId}' not found in '${configPath}'.`);
+  if (!config || !config.profiles || !config.profiles[profileId]) {
+    console.error(`Error: Profile '${profileId}' not found in '${configPath}'.`);
     process.exit(1);
   }
 
-  delete config.envs[configId];
+  delete config.profiles[profileId];
   saveConfig(config, configPath);
 
-  console.log(`Env '${configId}' removed successfully from '${configPath}'.`);
+  console.log(`Profile '${profileId}' removed successfully from '${configPath}'.`);
 }
 
 module.exports = { removeCommand };

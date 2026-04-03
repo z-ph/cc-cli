@@ -18,48 +18,38 @@ function listCommand(options = {}) {
     if (fs.existsSync(configPath)) {
       config = loadConfig(configPath);
     } else {
-      config = { settings: { alias: 'cc' }, envs: {}, configs: {} };
+      config = { settings: { alias: 'cc' }, profiles: {} };
     }
   }
 
   console.log(`Config file: ${configPath}`);
 
-  // Show envs
-  const envIds = Object.keys(config.envs || {});
-  console.log('\nEnvs:');
-  if (envIds.length === 0) {
-    console.log('  No env configurations found.');
+  // Show profiles
+  const profiles = config.profiles || {};
+  const profileIds = Object.keys(profiles);
+
+  console.log('\nProfiles:');
+  if (profileIds.length === 0) {
+    console.log('  No profiles found.');
     console.log('  Run "cc add <id>" to create one.');
   } else {
-    for (const id of envIds) {
-      const envVars = config.envs[id] || {};
-      const keys = Object.keys(envVars);
+    for (const id of profileIds) {
+      const entry = profiles[id];
       console.log(`  ${id}`);
-      if (keys.length > 0) {
-        console.log(`    vars:  ${keys.join(', ')}`);
+      const parts = [];
+      if (entry.env && Object.keys(entry.env).length > 0) {
+        parts.push(`env: ${Object.keys(entry.env).join(', ')}`);
+      }
+      const otherKeys = Object.keys(entry).filter(k => k !== 'env');
+      if (otherKeys.length > 0) {
+        parts.push(`settings: ${otherKeys.join(', ')}`);
+      }
+      if (parts.length > 0) {
+        console.log(`    ${parts.join(' | ')}`);
       }
       console.log();
     }
-    console.log(`  Total: ${envIds.length} env(s)`);
-  }
-
-  // Show configs
-  const configIds = Object.keys(config.configs || {});
-  console.log('\nConfigs:');
-  if (configIds.length === 0) {
-    console.log('  No settings configurations found.');
-    console.log('  Run "cc add-config <id>" to create one.');
-  } else {
-    for (const id of configIds) {
-      const entry = config.configs[id];
-      console.log(`  ${id}`);
-      const keys = Object.keys(entry).filter(k => true);
-      if (keys.length > 0) {
-        console.log(`    fields: ${keys.join(', ')}`);
-      }
-      console.log();
-    }
-    console.log(`  Total: ${configIds.length} config(s)`);
+    console.log(`  Total: ${profileIds.length} profile(s)`);
   }
 }
 

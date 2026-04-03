@@ -1,26 +1,24 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { findConfigEntry } = require('../config/loader');
+const { findProfile } = require('../config/loader');
 const { deepMerge } = require('../config/merger');
 
-function useCommand(configId, options = {}) {
-  const { config, configPath, source } = findConfigEntry(configId, options?.target);
+function useCommand(profileId, options = {}) {
+  const { profile, configPath, source } = findProfile(profileId, options?.target);
 
-  if (!config || !config.configs || !config.configs[configId]) {
+  if (!profile) {
     if (source === 'custom') {
-      console.error(`Error: Configuration '${configId}' not found in '${configPath}'.`);
+      console.error(`Error: Profile '${profileId}' not found in '${configPath}'.`);
     } else {
-      console.error(`Error: Configuration '${configId}' not found.`);
+      console.error(`Error: Profile '${profileId}' not found.`);
       console.log('Searched:');
       console.log('  1. Current directory: ./.claude/models.yaml');
       console.log('  2. Home directory: ~/.claude/models.yaml');
-      console.log('Run "cc list" to see available configurations.');
+      console.log('Run "cc list" to see available profiles.');
     }
     process.exit(1);
   }
-
-  const configEntry = config.configs[configId];
 
   // Determine target settings path
   const useGlobal = options?.global;
@@ -46,17 +44,17 @@ function useCommand(configId, options = {}) {
     fs.copyFileSync(settingsPath, sourcePath);
   }
 
-  // Merge with source (user's original) settings — config wins on conflicts
-  let finalSettings = configEntry;
+  // Merge with source (user's original) settings — profile wins on conflicts
+  let finalSettings = profile;
   if (fs.existsSync(sourcePath)) {
     const sourceContent = JSON.parse(fs.readFileSync(sourcePath, 'utf8'));
-    finalSettings = deepMerge(sourceContent, configEntry);
+    finalSettings = deepMerge(sourceContent, profile);
   }
 
   // Write settings
   fs.writeFileSync(settingsPath, JSON.stringify(finalSettings, null, 2), 'utf8');
 
-  console.log(`Configuration '${configId}' applied to: ${settingsPath}`);
+  console.log(`Profile '${profileId}' applied to: ${settingsPath}`);
 }
 
 module.exports = { useCommand };

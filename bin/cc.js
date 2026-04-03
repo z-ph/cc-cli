@@ -4,14 +4,12 @@ const { Command } = require('commander');
 const { launchCommand } = require('../src/commands/launch');
 const { listCommand } = require('../src/commands/list');
 const { addCommand } = require('../src/commands/add');
-const { addConfigCommand } = require('../src/commands/add-config');
 const { removeCommand } = require('../src/commands/remove');
-const { removeConfigCommand } = require('../src/commands/remove-config');
 const { editCommand } = require('../src/commands/edit');
-const { editConfigCommand } = require('../src/commands/edit-config');
 const { aliasCommand } = require('../src/commands/alias');
 const { useCommand } = require('../src/commands/use');
 const { restoreCommand } = require('../src/commands/restore');
+const { parseCommand } = require('../src/commands/parse');
 
 const program = new Command();
 
@@ -21,79 +19,51 @@ program
   .version('1.0.0')
   .option('-t, --target <file>', 'specify custom config file (YAML)');
 
-// Main launch command: cc <env-id>
+// Main launch command: cc <profile-id>
 program
-  .argument('[config-id]', 'env configuration ID to launch')
-  .action((configId, options) => {
-    if (!configId) {
+  .argument('[profile-id]', 'profile ID to launch')
+  .action((profileId, options) => {
+    if (!profileId) {
       program.help();
     }
-    launchCommand(configId, options);
+    launchCommand(profileId, options);
   });
 
 // List command
 program
   .command('list')
-  .description('List all configurations')
+  .description('List all profiles')
   .option('-g, --global', 'operate on global config (~/.claude/models.yaml)')
   .action((options) => {
     listCommand({ ...options, target: options.target || program.opts().target });
   });
 
-// Add env command
+// Add profile command
 program
-  .command('add <config-id>')
-  .description('Add a new env configuration')
+  .command('add <profile-id>')
+  .description('Add a new profile')
   .option('-g, --global', 'operate on global config (~/.claude/models.yaml)')
-  .option('-s, --source <file>', 'import env vars from a settings JSON file')
-  .action((configId, options) => {
-    addCommand(configId, { ...options, target: options.target || program.opts().target });
+  .option('-s, --source <file>', 'import from a settings JSON file')
+  .action((profileId, options) => {
+    addCommand(profileId, { ...options, target: options.target || program.opts().target });
   });
 
-// Add config command
+// Remove profile command
 program
-  .command('add-config <config-id>')
-  .description('Add a new settings configuration')
+  .command('remove <profile-id>')
+  .description('Remove a profile')
   .option('-g, --global', 'operate on global config (~/.claude/models.yaml)')
-  .option('-s, --source <file>', 'import settings from a settings JSON file')
-  .action((configId, options) => {
-    addConfigCommand(configId, { ...options, target: options.target || program.opts().target });
+  .action((profileId, options) => {
+    removeCommand(profileId, { ...options, target: options.target || program.opts().target });
   });
 
-// Remove env command
+// Edit profile command
 program
-  .command('remove <config-id>')
-  .description('Remove an env configuration')
+  .command('edit <profile-id>')
+  .description('Edit an existing profile')
   .option('-g, --global', 'operate on global config (~/.claude/models.yaml)')
-  .action((configId, options) => {
-    removeCommand(configId, { ...options, target: options.target || program.opts().target });
-  });
-
-// Remove config command
-program
-  .command('remove-config <config-id>')
-  .description('Remove a settings configuration')
-  .option('-g, --global', 'operate on global config (~/.claude/models.yaml)')
-  .action((configId, options) => {
-    removeConfigCommand(configId, { ...options, target: options.target || program.opts().target });
-  });
-
-// Edit env command
-program
-  .command('edit <config-id>')
-  .description('Edit an existing env configuration')
-  .option('-g, --global', 'operate on global config (~/.claude/models.yaml)')
-  .action((configId, options) => {
-    editCommand(configId, { ...options, target: options.target || program.opts().target });
-  });
-
-// Edit config command
-program
-  .command('edit-config <config-id>')
-  .description('Edit an existing settings configuration')
-  .option('-g, --global', 'operate on global config (~/.claude/models.yaml)')
-  .action((configId, options) => {
-    editConfigCommand(configId, { ...options, target: options.target || program.opts().target });
+  .action((profileId, options) => {
+    editCommand(profileId, { ...options, target: options.target || program.opts().target });
   });
 
 // Alias command
@@ -104,13 +74,13 @@ program
     aliasCommand(name, { ...options, target: options.target || program.opts().target });
   });
 
-// Use command (applies settings config)
+// Use command (applies profile to settings file without launching)
 program
-  .command('use <config-id>')
-  .description('Apply a settings configuration to settings file without launching')
+  .command('use <profile-id>')
+  .description('Apply a profile to settings file without launching')
   .option('-g, --global', 'write to ~/.claude/settings.json instead of ./.claude/settings.local.json')
-  .action((configId, options) => {
-    useCommand(configId, { ...options, target: options.target || program.opts().target });
+  .action((profileId, options) => {
+    useCommand(profileId, { ...options, target: options.target || program.opts().target });
   });
 
 // Restore command
@@ -120,6 +90,16 @@ program
   .option('-g, --global', 'restore ~/.claude/settings.json instead of ./.claude/settings.local.json')
   .action((options) => {
     restoreCommand({ ...options, target: options.target || program.opts().target });
+  });
+
+// Parse command: import settings JSON as a profile
+program
+  .command('parse <settings-path> <profile-id>')
+  .description('Parse a settings JSON file into a profile')
+  .option('-g, --global', 'save to global config (~/.claude/models.yaml)')
+  .option('-c, --copy', 'copy YAML to clipboard instead of saving to config')
+  .action((settingsPath, profileId, options) => {
+    parseCommand(settingsPath, profileId, { ...options, target: options.target || program.opts().target });
   });
 
 program.parse();

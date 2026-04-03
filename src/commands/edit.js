@@ -1,11 +1,9 @@
 const { loadConfig, saveConfig, getLocalConfigPath, getGlobalConfigPath } = require('../config/loader');
 const { validateConfigId } = require('../config/validator');
-const { loadEnvRegistry, buildEnvChoices, promptEnvValue } = require('../config/env-registry');
-const { maybeSaveToRegistry } = require('./add');
 const { default: inquirer } = require('inquirer');
 const fs = require('fs');
 
-async function editCommand(configId, options = {}) {
+async function editCommand(profileId, options = {}) {
   const customPath = options?.target;
   const useGlobal = options?.global;
 
@@ -27,148 +25,62 @@ async function editCommand(configId, options = {}) {
     }
   }
 
-  if (!config || !config.envs || !config.envs[configId]) {
-    console.error(`Error: Env '${configId}' not found in '${configPath}'.`);
+  if (!config || !config.profiles || !config.profiles[profileId]) {
+    console.error(`Error: Profile '${profileId}' not found in '${configPath}'.`);
     process.exit(1);
   }
 
-  const env = { ...config.envs[configId] };
+  const entry = config.profiles[profileId];
 
-  console.log(`Editing env from: ${configPath}`);
+  console.log(`Editing profile from: ${configPath}`);
 
   // Prompt for new ID
   const idAnswer = await inquirer.prompt([
     {
       type: 'input',
       name: 'newId',
-      message: 'Config ID:',
-      default: configId
+      message: 'Profile ID:',
+      default: profileId
     }
   ]);
 
   const newId = idAnswer.newId.trim();
-  if (newId !== configId) {
-    const idValidation = validateConfigId(newId, { ...config.envs, [configId]: undefined });
+  if (newId !== profileId) {
+    const idValidation = validateConfigId(newId, { ...config.profiles, [profileId]: undefined });
     if (!idValidation.valid) {
       console.error(`Error: ${idValidation.error}`);
       process.exit(1);
     }
   }
 
-  // Prompt for core env vars (optional, empty = not injected)
-  const answers = await inquirer.prompt([
+  // Edit via JSON editor — the whole profile
+  const editAnswer = await inquirer.prompt([
     {
-      type: 'input',
-      name: 'baseUrl',
-      message: 'ANTHROPIC_BASE_URL (empty to remove):',
-      ...(env.ANTHROPIC_BASE_URL ? { default: env.ANTHROPIC_BASE_URL } : {})
-    },
-    {
-      type: 'password',
-      name: 'authToken',
-      message: 'ANTHROPIC_AUTH_TOKEN (empty to remove):',
-      mask: '*'
-    },
-    {
-      type: 'input',
-      name: 'model',
-      message: 'ANTHROPIC_MODEL (empty to remove):',
-      ...(env.ANTHROPIC_MODEL ? { default: env.ANTHROPIC_MODEL } : {})
+      type: 'editor',
+      name: 'profileJson',
+      message: 'Edit profile (JSON):',
+      default: JSON.stringify(entry, null, 2)
     }
   ]);
 
-  if (answers.baseUrl.trim()) {
-    env.ANTHROPIC_BASE_URL = answers.baseUrl.trim();
-  } else {
-    delete env.ANTHROPIC_BASE_URL;
-  }
-  if (answers.authToken.trim()) {
-    env.ANTHROPIC_AUTH_TOKEN = answers.authToken.trim();
-  } else {
-    delete env.ANTHROPIC_AUTH_TOKEN;
-  }
-  if (answers.model.trim()) {
-    env.ANTHROPIC_MODEL = answers.model.trim();
-  } else {
-    delete env.ANTHROPIC_MODEL;
-  }
-
-  // Handle other env vars
-  const otherKeys = Object.keys(env).filter(k => k !== 'ANTHROPIC_BASE_URL' && k !== 'ANTHROPIC_AUTH_TOKEN' && k !== 'ANTHROPIC_MODEL');
-
-  const envChoice = await inquirer.prompt([
-    {
-      type: 'list',
-      name: 'action',
-      message: 'Other environment variables:',
-      choices: [
-        { name: 'Keep as is', value: 'keep' },
-        { name: 'Edit/add variables', value: 'edit' },
-        { name: 'Clear all (except core vars)', value: 'clear' }
-      ]
-    }
-  ]);
-
-  if (envChoice.action === 'clear') {
-    for (const key of otherKeys) {
-      delete env[key];
-    }
-  } else if (envChoice.action === 'edit') {
-    console.log('\nCurrent environment variables:');
-    if (otherKeys.length === 0) {
-      console.log('  (none)');
-    } else {
-      for (const key of otherKeys) {
-        console.log(`  ${key}=${env[key]}`);
-      }
-    }
-
-    const registry = loadEnvRegistry();
-    let selecting = true;
-    while (selecting) {
-      const choices = buildEnvChoices(registry, env);
-      const selectAnswer = await inquirer.prompt([
-        {
-          type: 'list',
-          name: 'selected',
-          message: 'Add/edit environment variable:',
-          choices
-        }
-      ]);
-
-      if (selectAnswer.selected === '__done__') {
-        selecting = false;
-        continue;
-      }
-
-      if (selectAnswer.selected === '__custom__') {
-        const customAnswer = await inquirer.prompt([
-          { type: 'input', name: 'key', message: 'Variable name:', validate: (i) => i.trim() !== '' || 'Name is required' },
-          { type: 'input', name: 'value', message: 'Value:', default: env[customAnswer?.key] || '' }
-        ]);
-        env[customAnswer.key.trim()] = customAnswer.value.trim();
-        await maybeSaveToRegistry(customAnswer.key.trim(), registry);
-        continue;
-      }
-
-      const varDef = registry.find(v => v.key === selectAnswer.selected);
-      const value = await promptEnvValue(varDef, env[varDef.key]);
-      if (value !== null && value !== '') {
-        env[varDef.key] = value;
-      }
-    }
+  let parsed;
+  try {
+    parsed = JSON.parse(editAnswer.profileJson);
+  } catch (e) {
+    console.error('Error: Invalid JSON. No changes saved.');
+    process.exit(1);
   }
 
   // Save
-  if (newId !== configId) {
-    delete config.envs[configId];
-    config.envs[newId] = env;
+  if (newId !== profileId) {
+    delete config.profiles[profileId];
+    config.profiles[newId] = parsed;
   } else {
-    config.envs[configId] = env;
+    config.profiles[profileId] = parsed;
   }
   saveConfig(config, configPath);
 
-  console.log(`Env '${newId}' updated successfully in '${configPath}'.`);
+  console.log(`Profile '${newId}' updated successfully in '${configPath}'.`);
 }
 
 module.exports = { editCommand };

@@ -1,18 +1,20 @@
 const { spawn } = require('child_process');
-const { findEnvConfig } = require('../config/loader');
+const fs = require('fs');
+const path = require('path');
+const { findProfile, getSettingsDir } = require('../config/loader');
 
-function launchCommand(configId, options) {
-  const { config, configPath, source } = findEnvConfig(configId, options?.target);
+function launchCommand(profileId, options) {
+  const { profile, configPath, source } = findProfile(profileId, options?.target);
 
-  if (!config || !config.envs || !config.envs[configId]) {
+  if (!profile) {
     if (source === 'custom') {
-      console.error(`Error: Env configuration '${configId}' not found in '${configPath}'.`);
+      console.error(`Error: Profile '${profileId}' not found in '${configPath}'.`);
     } else {
-      console.error(`Error: Env configuration '${configId}' not found.`);
+      console.error(`Error: Profile '${profileId}' not found.`);
       console.log('Searched:');
       console.log('  1. Current directory: ./.claude/models.yaml');
       console.log('  2. Home directory: ~/.claude/models.yaml');
-      console.log('Run "cc list" to see available configurations.');
+      console.log('Run "cc list" to see available profiles.');
     }
     process.exit(1);
   }
@@ -21,15 +23,17 @@ function launchCommand(configId, options) {
     console.log(`Using configuration from: ${configPath}`);
   }
 
-  // Inject env vars from config
-  const envVars = config.envs[configId];
-  const env = { ...process.env, ...envVars };
+  // Generate settings.<id>.json in the .claude/ directory next to models.yaml
+  const settingsDir = getSettingsDir(configPath);
+  const settingsFile = path.join(settingsDir, `settings.${profileId}.json`);
 
-  // Spawn claude process with env injection
-  const claudeProcess = spawn('claude', [], {
+  // Profile content is already in settings format (env, permissions, hooks, etc.)
+  fs.writeFileSync(settingsFile, JSON.stringify(profile, null, 2), 'utf8');
+
+  // Spawn claude with --settings flag
+  const claudeProcess = spawn('claude', ['--settings', settingsFile], {
     stdio: 'inherit',
-    shell: true,
-    env
+    shell: true
   });
 
   claudeProcess.on('exit', (code) => {

@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const yaml = require('js-yaml');
+const { deepMerge } = require('./merger');
 
 const GLOBAL_CONFIG_DIR = path.join(os.homedir(), '.claude');
 const GLOBAL_CONFIG_PATH = path.join(GLOBAL_CONFIG_DIR, 'models.yaml');
@@ -12,8 +13,8 @@ const DEFAULT_CONFIG = {
   settings: {
     alias: 'cc'
   },
-  envs: {},
-  configs: {}
+  base: {},
+  profiles: {}
 };
 
 function getLocalConfigPath() {
@@ -22,68 +23,6 @@ function getLocalConfigPath() {
 
 function getGlobalConfigPath() {
   return GLOBAL_CONFIG_PATH;
-}
-
-function findEnvConfig(configId, customConfigPath) {
-  // Priority 1: Custom config file (if specified)
-  if (customConfigPath) {
-    const resolvedPath = path.resolve(customConfigPath);
-    if (fs.existsSync(resolvedPath)) {
-      const config = yaml.load(fs.readFileSync(resolvedPath, 'utf8'));
-      return { config, configPath: resolvedPath, source: 'custom' };
-    }
-    return { config: null, configPath: resolvedPath, source: 'custom' };
-  }
-
-  // Priority 2: Local config (.claude/models.yaml in current directory)
-  const localPath = getLocalConfigPath();
-  if (fs.existsSync(localPath)) {
-    const config = yaml.load(fs.readFileSync(localPath, 'utf8'));
-    if (config.envs && config.envs[configId]) {
-      return { config, configPath: localPath, source: 'local' };
-    }
-  }
-
-  // Priority 3: Global config (~/.claude/models.yaml)
-  if (fs.existsSync(GLOBAL_CONFIG_PATH)) {
-    const config = yaml.load(fs.readFileSync(GLOBAL_CONFIG_PATH, 'utf8'));
-    if (config.envs && config.envs[configId]) {
-      return { config, configPath: GLOBAL_CONFIG_PATH, source: 'global' };
-    }
-  }
-
-  return { config: null, configPath: localPath, source: null };
-}
-
-function findConfigEntry(configId, customConfigPath) {
-  // Priority 1: Custom config file (if specified)
-  if (customConfigPath) {
-    const resolvedPath = path.resolve(customConfigPath);
-    if (fs.existsSync(resolvedPath)) {
-      const config = yaml.load(fs.readFileSync(resolvedPath, 'utf8'));
-      return { config, configPath: resolvedPath, source: 'custom' };
-    }
-    return { config: null, configPath: resolvedPath, source: 'custom' };
-  }
-
-  // Priority 2: Local config (.claude/models.yaml in current directory)
-  const localPath = getLocalConfigPath();
-  if (fs.existsSync(localPath)) {
-    const config = yaml.load(fs.readFileSync(localPath, 'utf8'));
-    if (config.configs && config.configs[configId]) {
-      return { config, configPath: localPath, source: 'local' };
-    }
-  }
-
-  // Priority 3: Global config (~/.claude/models.yaml)
-  if (fs.existsSync(GLOBAL_CONFIG_PATH)) {
-    const config = yaml.load(fs.readFileSync(GLOBAL_CONFIG_PATH, 'utf8'));
-    if (config.configs && config.configs[configId]) {
-      return { config, configPath: GLOBAL_CONFIG_PATH, source: 'global' };
-    }
-  }
-
-  return { config: null, configPath: localPath, source: null };
 }
 
 function loadConfig(customConfigPath) {
@@ -116,11 +55,98 @@ function saveConfig(config, customConfigPath) {
   fs.writeFileSync(targetPath, yamlContent, 'utf8');
 }
 
+/**
+ * Load global config if it exists, return null otherwise.
+ */
+function loadGlobalConfig() {
+  if (fs.existsSync(GLOBAL_CONFIG_PATH)) {
+    return yaml.load(fs.readFileSync(GLOBAL_CONFIG_PATH, 'utf8'));
+  }
+  return null;
+}
+
+/**
+ * Resolve a profile with cascading base inheritance.
+ * Chain: globalBase → localBase → profile (each layer wins over the previous).
+ */
+function resolveProfile(globalConfig, localConfig, profileId) {
+  const globalBase = globalConfig?.base || {};
+  const localBase = localConfig?.base || {};
+  const profile = localConfig?.profiles?.[profileId] || globalConfig?.profiles?.[profileId];
+  return deepMerge(deepMerge(globalBase, localBase), profile);
+}
+
+/**
+ * Find a profile by ID across local, global, and custom config files.
+ *
+ * Base inheritance chain: globalBase → localBase → profile
+ * When a profile is found locally, the global base is still loaded and merged first.
+ * When a profile is found globally, only the global base applies.
+ *
+ * Returns { profile, configPath, source } where profile is the fully resolved result.
+ * Returns { profile: null, ... } if not found.
+ */
+function findProfile(profileId, customConfigPath) {
+  // Always preload global config for base inheritance
+  const globalConfig = loadGlobalConfig();
+
+  // Priority 1: Custom config file (if specified)
+  if (customConfigPath) {
+    const resolvedPath = path.resolve(customConfigPath);
+    if (fs.existsSync(resolvedPath)) {
+      const config = yaml.load(fs.readFileSync(resolvedPath, 'utf8'));
+      if (config.profiles && config.profiles[profileId]) {
+        return {
+          profile: resolveProfile(globalConfig, config, profileId),
+          configPath: resolvedPath,
+          source: 'custom'
+        };
+      }
+    }
+    return { profile: null, configPath: path.resolve(customConfigPath), source: 'custom' };
+  }
+
+  // Priority 2: Local config (.claude/models.yaml in current directory)
+  const localPath = getLocalConfigPath();
+  if (fs.existsSync(localPath)) {
+    const localConfig = yaml.load(fs.readFileSync(localPath, 'utf8'));
+    if (localConfig.profiles && localConfig.profiles[profileId]) {
+      return {
+        profile: resolveProfile(globalConfig, localConfig, profileId),
+        configPath: localPath,
+        source: 'local'
+      };
+    }
+  }
+
+  // Priority 3: Global config (~/.claude/models.yaml)
+  if (globalConfig && globalConfig.profiles && globalConfig.profiles[profileId]) {
+    return {
+      profile: resolveProfile(null, globalConfig, profileId),
+      configPath: GLOBAL_CONFIG_PATH,
+      source: 'global'
+    };
+  }
+
+  return { profile: null, configPath: localPath, source: null };
+}
+
+/**
+ * Given the configPath where models.yaml was found, return the directory
+ * where settings.<id>.json files should be written.
+ * - local  .claude/models.yaml  → .claude/
+ * - global ~/.claude/models.yaml → ~/.claude/
+ * - custom /path/to/models.yaml → /path/to/
+ */
+function getSettingsDir(configPath) {
+  return path.dirname(configPath);
+}
+
 module.exports = {
   loadConfig,
   saveConfig,
-  findEnvConfig,
-  findConfigEntry,
+  findProfile,
+  getSettingsDir,
   getLocalConfigPath,
   getGlobalConfigPath
 };
