@@ -24,3 +24,4 @@ Thumbs.db
 npm-debug.log*
 pnpm-debug.log*
 .npmrc
+cc-docs
