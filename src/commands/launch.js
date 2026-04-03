@@ -4,7 +4,7 @@ const path = require('path');
 const { findProfile, getSettingsDir } = require('../config/loader');
 
 function launchCommand(profileId, options) {
-  const { profile, configPath, source } = findProfile(profileId, options?.target);
+  const { profile, configPath, source } = findProfile(profileId, options?.target, { mergeBase: false });
 
   if (!profile) {
     if (source === 'custom') {

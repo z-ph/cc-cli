@@ -59,6 +59,8 @@ describe('Launch Command', () => {
 
     launchCommand('glm4');
 
+    expect(findProfile).toHaveBeenCalledWith('glm4', undefined, { mergeBase: false });
+
     const expectedSettingsPath = path.join('/path/to/.claude', 'settings.glm4.json');
     expect(fs.writeFileSync).toHaveBeenCalledWith(
       expectedSettingsPath,
@@ -90,7 +92,7 @@ describe('Launch Command', () => {
 
     launchCommand('glm4', { target: '/custom/models.yaml' });
 
-    expect(findProfile).toHaveBeenCalledWith('glm4', '/custom/models.yaml');
+    expect(findProfile).toHaveBeenCalledWith('glm4', '/custom/models.yaml', { mergeBase: false });
   });
 
   it('should show custom path in error message when source is custom', () => {

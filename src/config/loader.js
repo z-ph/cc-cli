@@ -86,7 +86,9 @@ function resolveProfile(globalConfig, localConfig, profileId) {
  * Returns { profile, configPath, source } where profile is the fully resolved result.
  * Returns { profile: null, ... } if not found.
  */
-function findProfile(profileId, customConfigPath) {
+function findProfile(profileId, customConfigPath, options = {}) {
+  const { mergeBase = true } = options;
+
   // Always preload global config for base inheritance
   const globalConfig = loadGlobalConfig();
 
@@ -97,7 +99,7 @@ function findProfile(profileId, customConfigPath) {
       const config = yaml.load(fs.readFileSync(resolvedPath, 'utf8'));
       if (config.profiles && config.profiles[profileId]) {
         return {
-          profile: resolveProfile(globalConfig, config, profileId),
+          profile: mergeBase ? resolveProfile(globalConfig, config, profileId) : config.profiles[profileId],
           configPath: resolvedPath,
           source: 'custom'
         };
@@ -112,7 +114,7 @@ function findProfile(profileId, customConfigPath) {
     const localConfig = yaml.load(fs.readFileSync(localPath, 'utf8'));
     if (localConfig.profiles && localConfig.profiles[profileId]) {
       return {
-        profile: resolveProfile(globalConfig, localConfig, profileId),
+        profile: mergeBase ? resolveProfile(globalConfig, localConfig, profileId) : localConfig.profiles[profileId],
         configPath: localPath,
         source: 'local'
       };
@@ -122,7 +124,7 @@ function findProfile(profileId, customConfigPath) {
   // Priority 3: Global config (~/.claude/models.yaml)
   if (globalConfig && globalConfig.profiles && globalConfig.profiles[profileId]) {
     return {
-      profile: resolveProfile(null, globalConfig, profileId),
+      profile: mergeBase ? resolveProfile(null, globalConfig, profileId) : globalConfig.profiles[profileId],
       configPath: GLOBAL_CONFIG_PATH,
       source: 'global'
     };
