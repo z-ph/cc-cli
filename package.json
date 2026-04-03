@@ -1,6 +1,6 @@
 {
   "name": "@zphhpzzph/cc-cli",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Quick launcher for Claude Code with custom configurations",
   "bin": {
     "cc": "./bin/cc.js"
@@ -23,9 +23,9 @@
   "devDependencies": {
     "jest": "^30.3.0"
   },
-    "publishConfig": {
+  "publishConfig": {
     "access": "public",
-    "registry": "https://registry.npmjs.org" 
+    "registry": "https://registry.npmjs.org"
   },
   "repository": {
     "type": "git",
