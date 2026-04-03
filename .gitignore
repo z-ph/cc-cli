@@ -16,6 +16,9 @@ Thumbs.db
 .vscode/
 .idea/
 
+# Promotional materials
+.ad/
+
 # Logs
 *.log
 npm-debug.log*
