@@ -65,10 +65,16 @@ describe('Launch Command', () => {
       JSON.stringify(profile, null, 2),
       'utf8'
     );
-    expect(spawn).toHaveBeenCalledWith('claude', ['--settings', expectedSettingsPath], {
-      stdio: 'inherit',
-      shell: true
-    });
+    if (process.platform === 'win32') {
+      expect(spawn).toHaveBeenCalledWith(`claude --settings ${expectedSettingsPath}`, {
+        stdio: 'inherit',
+        shell: true
+      });
+    } else {
+      expect(spawn).toHaveBeenCalledWith('claude', ['--settings', expectedSettingsPath], {
+        stdio: 'inherit'
+      });
+    }
   });
 
   it('should pass target path to findProfile via -t flag', () => {
