@@ -1,10 +1,13 @@
 // Set up mocks before importing modules
 jest.mock('../../src/config/loader');
 jest.mock('child_process');
+jest.mock('fs');
 
 const { launchCommand } = require('../../src/commands/launch');
-const { findEnvConfig } = require('../../src/config/loader');
+const { findProfile, getSettingsDir } = require('../../src/config/loader');
 const { spawn } = require('child_process');
+const fs = require('fs');
+const path = require('path');
 
 describe('Launch Command', () => {
   let mockExit;
@@ -27,71 +30,79 @@ describe('Launch Command', () => {
     mockLog.mockRestore();
   });
 
-  it('should exit when env config not found', () => {
-    findEnvConfig.mockReturnValue({ config: { envs: {} }, configPath: '/path/to/models.yaml', source: 'global' });
+  it('should exit when profile not found', () => {
+    findProfile.mockReturnValue({ profile: null, configPath: '/path/to/models.yaml', source: 'global' });
 
     expect(() => launchCommand('nonexistent')).toThrow('process.exit called');
-    expect(mockError).toHaveBeenCalledWith("Error: Env configuration 'nonexistent' not found.");
+    expect(mockError).toHaveBeenCalledWith("Error: Profile 'nonexistent' not found.");
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 
-  it('should spawn claude with env vars injected', () => {
-    const envVars = {
-      ANTHROPIC_BASE_URL: 'https://open.bigmodel.cn/api/paas/v4',
-      ANTHROPIC_AUTH_TOKEN: 'sk-test-key',
-      ANTHROPIC_MODEL: 'glm-4'
+  it('should generate settings file and spawn claude with --settings flag', () => {
+    const profile = {
+      env: {
+        ANTHROPIC_BASE_URL: 'https://open.bigmodel.cn/api/paas/v4',
+        ANTHROPIC_AUTH_TOKEN: 'sk-test-key',
+        ANTHROPIC_MODEL: 'glm-4'
+      },
+      permissions: { allow: ['Read'] }
     };
-    const mockConfig = { envs: { glm4: envVars }, configs: {} };
 
-    findEnvConfig.mockReturnValue({ config: mockConfig, configPath: '/path/to/models.yaml', source: 'global' });
+    findProfile.mockReturnValue({ profile, configPath: '/path/to/.claude/models.yaml', source: 'local' });
+    getSettingsDir.mockReturnValue('/path/to/.claude');
 
     const mockProcess = { on: jest.fn() };
     spawn.mockReturnValue(mockProcess);
+    fs.writeFileSync.mockImplementation(() => {});
 
     mockExit.mockImplementation(() => {});
 
     launchCommand('glm4');
 
-    expect(findEnvConfig).toHaveBeenCalledWith('glm4', undefined);
-    expect(spawn).toHaveBeenCalledWith('claude', [], {
+    const expectedSettingsPath = path.join('/path/to/.claude', 'settings.glm4.json');
+    expect(fs.writeFileSync).toHaveBeenCalledWith(
+      expectedSettingsPath,
+      JSON.stringify(profile, null, 2),
+      'utf8'
+    );
+    expect(spawn).toHaveBeenCalledWith('claude', ['--settings', expectedSettingsPath], {
       stdio: 'inherit',
-      shell: true,
-      env: expect.objectContaining(envVars)
+      shell: true
     });
   });
 
-  it('should pass target path to findEnvConfig via -t flag', () => {
-    const envVars = { ANTHROPIC_AUTH_TOKEN: 'sk-test' };
-    const mockConfig = { envs: { glm4: envVars }, configs: {} };
+  it('should pass target path to findProfile via -t flag', () => {
+    const profile = { env: { ANTHROPIC_AUTH_TOKEN: 'sk-test' } };
 
-    findEnvConfig.mockReturnValue({ config: mockConfig, configPath: '/custom/models.yaml', source: 'custom' });
+    findProfile.mockReturnValue({ profile, configPath: '/custom/.claude/models.yaml', source: 'custom' });
+    getSettingsDir.mockReturnValue('/custom/.claude');
 
     const mockProcess = { on: jest.fn() };
     spawn.mockReturnValue(mockProcess);
+    fs.writeFileSync.mockImplementation(() => {});
     mockExit.mockImplementation(() => {});
 
     launchCommand('glm4', { target: '/custom/models.yaml' });
 
-    expect(findEnvConfig).toHaveBeenCalledWith('glm4', '/custom/models.yaml');
+    expect(findProfile).toHaveBeenCalledWith('glm4', '/custom/models.yaml');
   });
 
   it('should show custom path in error message when source is custom', () => {
-    findEnvConfig.mockReturnValue({ config: { envs: {} }, configPath: '/custom/models.yaml', source: 'custom' });
+    findProfile.mockReturnValue({ profile: null, configPath: '/custom/models.yaml', source: 'custom' });
 
     expect(() => launchCommand('nonexistent', { target: '/custom/models.yaml' })).toThrow('process.exit called');
-    expect(mockError).toHaveBeenCalledWith("Error: Env configuration 'nonexistent' not found in '/custom/models.yaml'.");
+    expect(mockError).toHaveBeenCalledWith("Error: Profile 'nonexistent' not found in '/custom/models.yaml'.");
   });
 
   it('should handle claude not installed error', () => {
-    const mockConfig = {
-      envs: { test: { ANTHROPIC_AUTH_TOKEN: 'sk-test' } },
-      configs: {}
-    };
+    const profile = { env: { ANTHROPIC_AUTH_TOKEN: 'sk-test' } };
 
-    findEnvConfig.mockReturnValue({ config: mockConfig, configPath: '/path/to/models.yaml', source: 'global' });
+    findProfile.mockReturnValue({ profile, configPath: '/path/to/.claude/models.yaml', source: 'global' });
+    getSettingsDir.mockReturnValue('/path/to/.claude');
 
     const mockProcess = { on: jest.fn() };
     spawn.mockReturnValue(mockProcess);
+    fs.writeFileSync.mockImplementation(() => {});
 
     launchCommand('test');
 
