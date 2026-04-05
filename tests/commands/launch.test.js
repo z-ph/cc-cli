@@ -1,10 +1,12 @@
 // Set up mocks before importing modules
 jest.mock('../../src/config/loader');
+jest.mock('../../src/commands/serve');
 jest.mock('child_process');
 jest.mock('fs');
 
 const { launchCommand } = require('../../src/commands/launch');
 const { findProfile, getSettingsDir } = require('../../src/config/loader');
+const { checkProxyAlive } = require('../../src/commands/serve');
 const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
@@ -30,15 +32,15 @@ describe('Launch Command', () => {
     mockLog.mockRestore();
   });
 
-  it('should exit when profile not found', () => {
+  it('should exit when profile not found', async () => {
     findProfile.mockReturnValue({ profile: null, configPath: '/path/to/models.yaml', source: 'global' });
 
-    expect(() => launchCommand('nonexistent')).toThrow('process.exit called');
+    await expect(launchCommand('nonexistent')).rejects.toThrow('process.exit called');
     expect(mockError).toHaveBeenCalledWith("Error: Profile 'nonexistent' not found.");
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 
-  it('should generate settings file and spawn claude with --settings flag', () => {
+  it('should generate settings file and spawn claude with --settings flag', async () => {
     const profile = {
       env: {
         ANTHROPIC_BASE_URL: 'https://open.bigmodel.cn/api/paas/v4',
@@ -57,7 +59,7 @@ describe('Launch Command', () => {
 
     mockExit.mockImplementation(() => {});
 
-    launchCommand('glm4');
+    await launchCommand('glm4');
 
     expect(findProfile).toHaveBeenCalledWith('glm4', undefined, { mergeBase: false });
 
@@ -79,7 +81,7 @@ describe('Launch Command', () => {
     }
   });
 
-  it('should pass target path to findProfile via -t flag', () => {
+  it('should pass target path to findProfile via -t flag', async () => {
     const profile = { env: { ANTHROPIC_AUTH_TOKEN: 'sk-test' } };
 
     findProfile.mockReturnValue({ profile, configPath: '/custom/.claude/models.yaml', source: 'custom' });
@@ -90,19 +92,19 @@ describe('Launch Command', () => {
     fs.writeFileSync.mockImplementation(() => {});
     mockExit.mockImplementation(() => {});
 
-    launchCommand('glm4', { target: '/custom/models.yaml' });
+    await launchCommand('glm4', { target: '/custom/models.yaml' });
 
     expect(findProfile).toHaveBeenCalledWith('glm4', '/custom/models.yaml', { mergeBase: false });
   });
 
-  it('should show custom path in error message when source is custom', () => {
+  it('should show custom path in error message when source is custom', async () => {
     findProfile.mockReturnValue({ profile: null, configPath: '/custom/models.yaml', source: 'custom' });
 
-    expect(() => launchCommand('nonexistent', { target: '/custom/models.yaml' })).toThrow('process.exit called');
+    await expect(launchCommand('nonexistent', { target: '/custom/models.yaml' })).rejects.toThrow('process.exit called');
     expect(mockError).toHaveBeenCalledWith("Error: Profile 'nonexistent' not found in '/custom/models.yaml'.");
   });
 
-  it('should handle claude not installed error', () => {
+  it('should handle claude not installed error', async () => {
     const profile = { env: { ANTHROPIC_AUTH_TOKEN: 'sk-test' } };
 
     findProfile.mockReturnValue({ profile, configPath: '/path/to/.claude/models.yaml', source: 'global' });
@@ -112,7 +114,7 @@ describe('Launch Command', () => {
     spawn.mockReturnValue(mockProcess);
     fs.writeFileSync.mockImplementation(() => {});
 
-    launchCommand('test');
+    await launchCommand('test');
 
     const errorHandler = mockProcess.on.mock.calls.find(
       call => call[0] === 'error'

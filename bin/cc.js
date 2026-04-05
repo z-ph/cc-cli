@@ -10,6 +10,7 @@ const { aliasCommand } = require('../src/commands/alias');
 const { useCommand } = require('../src/commands/use');
 const { restoreCommand } = require('../src/commands/restore');
 const { parseCommand } = require('../src/commands/parse');
+const { serveCommand } = require('../src/commands/serve');
 
 const program = new Command();
 
@@ -104,6 +105,35 @@ program
   .option('-c, --copy', 'copy YAML to clipboard instead of saving to config')
   .action((settingsPath, profileId, options) => {
     parseCommand(settingsPath, profileId, { ...options, target: options.target || program.opts().target });
+  });
+
+// Serve command: local model proxy (with subcommands list/stop)
+const serveCmd = program
+  .command('serve')
+  .description('Manage local model proxy servers')
+  .argument('[profile-id]', 'profile ID to start proxy for')
+  .option('-b, --base', 'use base config instead of a profile')
+  .option('--run', 'start proxy and launch Claude Code')
+  .option('-t, --target <file>', 'specify custom config file (YAML)')
+  .action((profileId, options) => {
+    serveCommand(profileId, undefined, { ...options, target: options.target || program.opts().target });
+  });
+
+serveCmd
+  .command('list')
+  .description('List running proxy servers')
+  .action(() => {
+    serveCommand('list');
+  });
+
+serveCmd
+  .command('stop [profile-id]')
+  .description('Stop a running proxy server')
+  .option('--all', 'stop all running proxies')
+  .option('-b, --base', 'stop base proxy')
+  .option('-t, --target <file>', 'specify custom config file (YAML)')
+  .action((profileId, options) => {
+    serveCommand('stop', profileId, { ...options, target: options.target || program.opts().target });
   });
 
 program.parse();
