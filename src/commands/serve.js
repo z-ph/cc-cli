@@ -251,7 +251,8 @@ async function startProxy(profileId, options) {
     }
     saveConfig(freshConfig, configPath);
 
-    // 分离子进程
+    // 关闭 IPC 通道，分离子进程
+    child.disconnect();
     child.unref();
 
     console.log(`代理已启动: ${proxyField.url} → ${baseUrl}`);
@@ -261,6 +262,8 @@ async function startProxy(profileId, options) {
       console.log(`正在启动 Claude Code...`);
       const { launchCommand } = require('./launch');
       launchCommand(profileId, options);
+    } else {
+      process.exit(0);
     }
   } catch (err) {
     try { child.kill(); } catch {}

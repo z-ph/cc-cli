@@ -7,6 +7,13 @@
 - 按需重映射模型名称（如 `claude-sonnet` → `claude-opus`）
 - 无模型映射配置时，强制所有请求走 profile 指定的模型
 
+**核心痛点：Agent Team 模型不可控问题。** Claude Code 的 Agent/Team 功能在启动子 agent 时，子 agent 会继承主进程的 `ANTHROPIC_BASE_URL` 和 `ANTHROPIC_MODEL` 环境变量，但用户无法控制子 agent 实际使用的模型。当使用第三方 API 时，常见问题包括：
+- 子 agent 请求了当前 API 不支持的模型（如请求 `claude-opus` 但 API 只提供 `claude-sonnet`）
+- 模型名称不匹配导致请求失败，子 agent 无法正常工作
+- 无法对主 agent 和子 agent 的模型请求做统一拦截和重映射
+
+`cc serve` 通过在本地启动一个透明反代，拦截所有模型请求并按规则重映射，从根本上解决了这个问题——无论主 agent 还是子 agent，所有请求都经过代理，模型名称被统一管控。
+
 ## 解决方案
 
 新增 `cc serve` 子命令，为 profile 启动一个本地 HTTP 反向代理服务。代理在后台运行，`cc <id>` 检测到 `proxy` 字段时自动使用代理地址启动 Claude Code。
