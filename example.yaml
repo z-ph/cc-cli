@@ -69,3 +69,22 @@ profiles:
         - "Bash(npm run *)"
         - "Read"
         - "Write"
+
+  # 代理模式：模型路由 + 模型映射
+  # my-proxy:
+  #   env:
+  #     ANTHROPIC_BASE_URL: https://api.anthropic.com
+  #     ANTHROPIC_AUTH_TOKEN: sk-xxxxxxxx
+  #   modelOverride:                              # 可选：模型名称映射表
+  #     claude-sonnet-4-20250514: claude-opus-4-20250514
+  #   # proxy 字段由 cc serve 自动管理，无需手动添加
+  #   # 启动代理: cc serve my-proxy
+  #   # 查看代理: cc serve list
+  #   # 停止代理: cc serve stop my-proxy
+
+  # 强制模型模式：无 modelOverride 时，ANTHROPIC_MODEL 作为默认路由模型
+  # force-model:
+  #   env:
+  #     ANTHROPIC_BASE_URL: https://api.example.com/v1
+  #     ANTHROPIC_AUTH_TOKEN: sk-xxxxxxxx
+  #     ANTHROPIC_MODEL: claude-sonnet-4-20250514    # 所有请求强制使用此模型
