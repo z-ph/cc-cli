@@ -14,12 +14,15 @@ const STATUS_PATH = '/__cc_proxy_status';
  * @returns {http.Server}
  */
 function createProxyServer(options) {
-  const { baseUrl, modelOverride, defaultModel, token } = options;
+  const { baseUrl, modelOverride, defaultModel, token, logger } = options;
   const parsedBase = new URL(baseUrl);
   const isHttps = parsedBase.protocol === 'https:';
   const transport = isHttps ? https : http;
+  let requestIdCounter = 0;
 
   const server = http.createServer(async (req, res) => {
+    const startTime = Date.now();
+
     // 健康检查端点
     if (req.url.startsWith(STATUS_PATH)) {
       const url = new URL(req.url, 'http://localhost');
@@ -34,6 +37,10 @@ function createProxyServer(options) {
       return;
     }
 
+    // 提取 pathname（去除 query string）
+    const reqUrl = new URL(req.url, 'http://localhost');
+    const reqPath = reqUrl.pathname;
+
     // 收集请求体
     const chunks = [];
     for await (const chunk of req) {
@@ -43,15 +50,23 @@ function createProxyServer(options) {
 
     // 解析并修改 model
     let body = rawBody;
+    let originalModel = null;
+    let replacedModel = null;
+    let streamFlag = null;
     try {
       const parsed = JSON.parse(rawBody.toString('utf8'));
       if (typeof parsed.model === 'string') {
+        originalModel = parsed.model;
         if (modelOverride && modelOverride[parsed.model]) {
           parsed.model = modelOverride[parsed.model];
         } else if (defaultModel) {
           parsed.model = defaultModel;
         }
+        replacedModel = parsed.model;
         body = Buffer.from(JSON.stringify(parsed), 'utf8');
+      }
+      if ('stream' in parsed) {
+        streamFlag = !!parsed.stream;
       }
     } catch {
       // 非 JSON 请求，透传
@@ -82,19 +97,45 @@ function createProxyServer(options) {
       upstreamOptions.rejectUnauthorized = false;
     }
 
+    // 日志采集辅助
+    const logId = ++requestIdCounter;
+    let logged = false;
+
+    function pushLog(status, error) {
+      if (logged || !logger) return;
+      logged = true;
+      logger.push({
+        id: logId,
+        ts: new Date().toISOString(),
+        method: req.method,
+        path: reqPath,
+        stream: streamFlag,
+        model: originalModel,
+        modelAfter: replacedModel !== null ? replacedModel : originalModel,
+        status,
+        durationMs: Date.now() - startTime,
+        error: error || null,
+      });
+    }
+
     const upstreamReq = transport.request(upstreamOptions, (upstreamRes) => {
       res.writeHead(upstreamRes.statusCode, upstreamRes.headers);
       upstreamRes.pipe(res);
+      res.on('finish', () => {
+        pushLog(upstreamRes.statusCode, null);
+      });
     });
 
     upstreamReq.on('error', (err) => {
+      const msg = `上游 ${baseUrl} 不可达: ${err.message}`;
       if (!res.headersSent) {
         res.writeHead(502, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({
           error: 'proxy_error',
-          message: `上游 ${baseUrl} 不可达: ${err.message}`,
+          message: msg,
         }));
       }
+      pushLog(null, msg);
     });
 
     upstreamReq.end(body);

@@ -63,6 +63,7 @@ cc use strict -g    # 写入 ~/.claude/settings.json（全局）
 | `cc serve [profile-id]` | 启动本地模型代理服务（`-b` 基于 base 启动，`--run` 启动代理后启动 Claude Code） |
 | `cc serve list` | 列出运行中的代理 |
 | `cc serve stop [profile-id]` | 停止指定代理（`--all` 停止所有） |
+| `cc serve log <profile-id>` | 查看代理请求日志（`-n` 指定行数，默认 20） |
 
 所有命令支持 `-g`（全局）和 `-t <file>`（自定义配置文件）选项。
 
@@ -206,6 +207,10 @@ cc serve list
 # 停止代理
 cc serve stop my-profile
 cc serve stop --all
+
+# 查看代理请求日志
+cc serve log my-profile          # 最近 20 条
+cc serve log my-profile -n 50    # 最近 50 条
 ```
 
 ### 模型路由逻辑

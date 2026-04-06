@@ -136,4 +136,13 @@ serveCmd
     serveCommand('stop', profileId, { ...options, target: options.target || program.opts().target });
   });
 
+serveCmd
+  .command('log <profile-id>')
+  .description('View proxy request logs')
+  .option('-n, --lines <count>', 'number of lines to show', '20')
+  .option('-t, --target <file>', 'specify custom config file (YAML)')
+  .action((profileId, options) => {
+    serveCommand('log', profileId, { ...options, target: options.target || program.opts().target, lines: parseInt(options.lines, 10) });
+  });
+
 program.parse();

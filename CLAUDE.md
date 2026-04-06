@@ -36,11 +36,12 @@ No build step — this is plain Node.js (>= 18) with no transpilation.
 
 **Parse command** (`src/commands/parse.js`): Parses a settings JSON file into a profile. `profile-id` is optional when using `--base` (`-b`). Supports `-c` for copy-to-clipboard mode.
 
-**Serve command** (`src/commands/serve.js`): Manages local HTTP reverse proxy servers. Supports start, list, stop, stop-all operations. `--base` mode uses `config.base`, `--run` starts proxy then launches Claude Code.
+**Serve command** (`src/commands/serve.js`): Manages local HTTP reverse proxy servers. Supports start, list, stop, stop-all, log operations. `--base` mode uses `config.base`, `--run` starts proxy then launches Claude Code. Worker stderr is redirected to the log file for crash diagnostics.
 
 **Proxy layer** (`src/proxy/`):
-- `server.js` — HTTP reverse proxy core (request interception, model replacement, forwarding, streaming response, health check endpoint)
-- `worker.js` — Background process entry point (loads config, starts server, IPC ready notification)
+- `server.js` — HTTP reverse proxy core (request interception, model replacement, forwarding, streaming response, health check endpoint, request logging via logger instance)
+- `worker.js` — Background process entry point (loads config, creates logger, starts server, IPC ready notification, SIGTERM/flushSync graceful shutdown)
+- `logger.js` — Async logging queue with batch file writing. Uses `setImmediate` drain loop to avoid blocking request forwarding. Supports `flush()` (async), `flushSync()` (crash path), auto-disable after consecutive write failures, queue overflow with dropped-count tracking.
 
 **Config YAML schema:**
 ```yaml
@@ -77,11 +78,13 @@ profiles:
 ## Workflow Rules
 
 - **任何需求（新功能、改动、修复）都必须先在 `PRD/` 目录下编写 PRD 文档**，描述背景、目标、方案，经确认后再动手写代码。
+- **PRD 完成后必须启动 review agent 进行审查**：使用 `code-review` skill 对 PRD 进行独立审查，确保方案合理、边界清晰、测试覆盖充分。审查通过后方可进入开发阶段。
 - **严格遵循 TDD（测试驱动开发）**：先写测试，再写实现。每个功能点/修复的流程为：
   1. 编写失败的测试用例，运行 `pnpm test` 确认测试失败
   2. 编写最少的代码使测试通过，再次运行 `pnpm test` 确认通过
   3. 在此框架下逐步完善实现，保证每步都通过
   4. 所有变更完成后，运行全量 `pnpm test` 确保无回归
+- **开发完成后必须同步更新文档**：检查并更新 `CLAUDE.md`、`example.yaml`、`README.md`，确保文档与代码实际行为一致。功能新增需在 README 中补充用法说明，配置变更需同步 example.yaml 中的示例。
 
 ## Key Design Decisions
 

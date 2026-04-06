@@ -1,5 +1,6 @@
 const { fork } = require('child_process');
 const path = require('path');
+const fs = require('fs');
 const http = require('http');
 const crypto = require('crypto');
 const {
@@ -186,18 +187,31 @@ async function startProxy(profileId, options) {
   const token = generateToken();
 
   // 构建代理配置
+  const configDir = path.dirname(configPath);
   const proxyConfig = {
     baseUrl,
     modelOverride: profile.modelOverride || null,
     defaultModel: profile?.env?.ANTHROPIC_MODEL || null,
     token,
+    profileId: targetName,
+    configDir,
   };
+
+  // 准备 stderr 重定向到日志文件
+  const logsDir = path.join(configDir, 'logs');
+  fs.mkdirSync(logsDir, { recursive: true });
+  const date = new Date().toISOString().slice(0, 10);
+  const logFilePath = path.join(logsDir, `proxy-${targetName}-${date}.log`);
+  const logFd = fs.openSync(logFilePath, 'a');
 
   // 启动 worker 进程
   const child = fork(WORKER_PATH, [JSON.stringify(proxyConfig)], {
     detached: true,
-    stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
+    stdio: ['ignore', 'ignore', logFd, 'ipc'],
   });
+
+  // 父进程不再需要 logFd
+  fs.closeSync(logFd);
 
   // 等待 worker 就绪
   const readyPromise = new Promise((resolve, reject) => {
@@ -392,6 +406,72 @@ async function stopAllProxies() {
 }
 
 /**
+ * 查看代理日志
+ */
+function logProxy(profileId, options) {
+  options = options || {};
+  const lines = options.lines || 20;
+
+  // 确定要搜索的配置路径
+  const configs = [
+    { configPath: getLocalConfigPath(), scope: '本地' },
+    { configPath: getGlobalConfigPath(), scope: '全局' },
+  ];
+
+  // 在配置文件同级 .claude/logs/ 下查找匹配的日志文件
+  const candidates = [];
+  for (const { configPath } of configs) {
+    const logsDir = path.join(path.dirname(configPath), 'logs');
+    if (!fs.existsSync(logsDir)) continue;
+    const files = fs.readdirSync(logsDir).filter(f => f.endsWith('.log'));
+    for (const file of files) {
+      if (file.startsWith(`proxy-${profileId}-`)) {
+        candidates.push(path.join(logsDir, file));
+      }
+    }
+  }
+
+  if (candidates.length === 0) {
+    console.log('暂无日志记录');
+    return;
+  }
+
+  // 取最新的文件
+  candidates.sort().reverse();
+  const logFile = candidates[0];
+
+  try {
+    const content = fs.readFileSync(logFile, 'utf8');
+    const allLines = content.trim().split('\n').filter(Boolean);
+    const tail = allLines.slice(-lines);
+
+    for (const line of tail) {
+      try {
+        const entry = JSON.parse(line);
+        if (entry.type === 'dropped') {
+          console.log(`[${entry.ts}] --- 丢弃了 ${entry.count} 条日志 ---`);
+          continue;
+        }
+        const modelInfo = entry.model
+          ? `${entry.model} → ${entry.modelAfter}`
+          : '';
+        const streamTag = entry.stream ? '[stream]' : '';
+        const errorTag = entry.error ? `[ERROR: ${entry.error}]` : '';
+        const statusTag = entry.status ? `[${entry.status}]` : '';
+        console.log(
+          `[${entry.ts}] #${entry.id} ${entry.method} ${entry.path} ${streamTag} ${modelInfo} ${statusTag} ${entry.durationMs}ms ${errorTag}`
+        );
+      } catch {
+        // 非 JSON 行直接输出
+        console.log(line);
+      }
+    }
+  } catch (err) {
+    console.error(`读取日志文件失败: ${err.message}`);
+  }
+}
+
+/**
  * serve 命令入口
  */
 function serveCommand(action, id, options) {
@@ -407,6 +487,9 @@ function serveCommand(action, id, options) {
       } else {
         stopProxy(id, options);
       }
+      break;
+    case 'log':
+      logProxy(id, options);
       break;
     default:
       // 无 action → 启动代理，action 实际上是 profile-id
