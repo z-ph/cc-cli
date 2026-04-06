@@ -166,7 +166,7 @@ cc add base -b
 # 添加/更新 base 配置（全局）
 cc add base -b -g
 
-# 编辑 base 配置（打开编辑器）
+# 编辑 base 配置（交互式引导，预填现有值）
 cc edit base -b
 
 # 将 base 配置应用到 settings 文件
