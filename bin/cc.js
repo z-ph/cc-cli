@@ -20,14 +20,16 @@ program
   .version('1.0.0')
   .option('-t, --target <file>', 'specify custom config file (YAML)');
 
-// Main launch command: cc <profile-id>
+// Main launch command: cc <profile-id> [extra args...]
 program
   .argument('[profile-id]', 'profile ID to launch')
-  .action((profileId, options) => {
+  .passThroughOptions()
+  .action((profileId, options, command) => {
     if (!profileId) {
       program.help();
     }
-    launchCommand(profileId, options);
+    const extraArgs = command.args.slice(1);
+    launchCommand(profileId, options, extraArgs);
   });
 
 // List command

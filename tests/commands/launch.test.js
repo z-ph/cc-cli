@@ -104,6 +104,60 @@ describe('Launch Command', () => {
     expect(mockError).toHaveBeenCalledWith("Error: Profile 'nonexistent' not found in '/custom/models.yaml'.");
   });
 
+  it('should pass extra args to claude spawn', async () => {
+    const profile = { env: { ANTHROPIC_AUTH_TOKEN: 'sk-test' } };
+
+    findProfile.mockReturnValue({ profile, configPath: '/path/to/.claude/models.yaml', source: 'local' });
+    getSettingsDir.mockReturnValue('/path/to/.claude');
+
+    const mockProcess = { on: jest.fn() };
+    spawn.mockReturnValue(mockProcess);
+    fs.writeFileSync.mockImplementation(() => {});
+    mockExit.mockImplementation(() => {});
+
+    await launchCommand('test', {}, ['-c', '--dangerously-skip-permissions']);
+
+    const expectedSettingsPath = path.join('/path/to/.claude', 'settings.test.json');
+    if (process.platform === 'win32') {
+      expect(spawn).toHaveBeenCalledWith(
+        `claude --settings ${expectedSettingsPath} -c --dangerously-skip-permissions`,
+        { stdio: 'inherit', shell: true }
+      );
+    } else {
+      expect(spawn).toHaveBeenCalledWith(
+        'claude',
+        ['--settings', expectedSettingsPath, '-c', '--dangerously-skip-permissions'],
+        { stdio: 'inherit' }
+      );
+    }
+  });
+
+  it('should default extraArgs to empty array', async () => {
+    const profile = { env: { ANTHROPIC_AUTH_TOKEN: 'sk-test' } };
+
+    findProfile.mockReturnValue({ profile, configPath: '/path/to/.claude/models.yaml', source: 'local' });
+    getSettingsDir.mockReturnValue('/path/to/.claude');
+
+    const mockProcess = { on: jest.fn() };
+    spawn.mockReturnValue(mockProcess);
+    fs.writeFileSync.mockImplementation(() => {});
+    mockExit.mockImplementation(() => {});
+
+    await launchCommand('test');
+
+    const expectedSettingsPath = path.join('/path/to/.claude', 'settings.test.json');
+    if (process.platform === 'win32') {
+      expect(spawn).toHaveBeenCalledWith(`claude --settings ${expectedSettingsPath}`, {
+        stdio: 'inherit',
+        shell: true
+      });
+    } else {
+      expect(spawn).toHaveBeenCalledWith('claude', ['--settings', expectedSettingsPath], {
+        stdio: 'inherit'
+      });
+    }
+  });
+
   it('should handle claude not installed error', async () => {
     const profile = { env: { ANTHROPIC_AUTH_TOKEN: 'sk-test' } };
 
