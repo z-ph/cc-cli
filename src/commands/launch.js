@@ -4,7 +4,7 @@ const path = require('path');
 const { findProfile, getSettingsDir, loadConfig, saveConfig } = require('../config/loader');
 const { checkProxyAlive } = require('./serve');
 
-async function launchCommand(profileId, options) {
+async function launchCommand(profileId, options, extraArgs = []) {
   const { profile, configPath, source } = findProfile(profileId, options?.target, { mergeBase: false });
 
   if (!profile) {
@@ -65,7 +65,7 @@ async function launchCommand(profileId, options) {
 
   // Spawn claude with --settings flag
   const shell = process.platform === 'win32';
-  const args = ['--settings', settingsFile];
+  const args = ['--settings', settingsFile, ...extraArgs];
   const claudeProcess = shell
     ? spawn(`claude ${args.join(' ')}`, { stdio: 'inherit', shell: true })
     : spawn('claude', args, { stdio: 'inherit' });
