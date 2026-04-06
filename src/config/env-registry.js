@@ -3,8 +3,8 @@ const path = require('path');
 const os = require('os');
 const yaml = require('js-yaml');
 
-const inquirer = require('inquirer');
-const Separator = inquirer.default.Separator;
+const { default: inquirer } = require('inquirer');
+const Separator = inquirer.Separator;
 
 const GLOBAL_REGISTRY_DIR = path.join(os.homedir(), '.claude');
 const GLOBAL_REGISTRY_PATH = path.join(GLOBAL_REGISTRY_DIR, 'env-registry.yaml');
@@ -300,7 +300,6 @@ function appendToRegistry(entry, scope) {
 }
 
 function buildEnvChoices(entries, existing) {
-  const inquirer = require('inquirer');
   const choices = [];
   const categories = [...new Set(entries.map(v => v.category))];
   for (const cat of categories) {
@@ -319,7 +318,6 @@ function buildEnvChoices(entries, existing) {
 }
 
 async function promptEnvValue(varDef, currentValue) {
-  const inquirer = require('inquirer');
   if (varDef.type === 'flag') {
     const answer = await inquirer.prompt([
       { type: 'confirm', name: 'enable', message: `Enable ${varDef.key}?`, default: currentValue ? true : false }
@@ -347,8 +345,6 @@ async function promptEnvValue(varDef, currentValue) {
 
 function buildAutocompleteSource(entries, existing) {
   return async function (answers, input) {
-    const inquirer = require('inquirer');
-    const Separator = inquirer.default.Separator;
 
     input = (input || '').toLowerCase();
 
@@ -399,8 +395,6 @@ function buildPagedEnvSource(entries, existing) {
   };
 
   const source = async function (answers, input) {
-    const inquirer = require('inquirer');
-    const Separator = inquirer.default.Separator;
     input = (input || '').toLowerCase();
 
     const choices = [];

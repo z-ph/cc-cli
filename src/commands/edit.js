@@ -106,13 +106,13 @@ async function editCommand(profileId, options = {}) {
         type: 'input',
         name: 'permissionsAllow',
         message: 'Permissions allow (comma-separated, empty to skip):',
-        default: permAllowDefault
+        ...(permAllowDefault ? { default: permAllowDefault } : {})
       },
       {
         type: 'input',
         name: 'permissionsDeny',
         message: 'Permissions deny (comma-separated, empty to skip):',
-        default: permDenyDefault
+        ...(permDenyDefault ? { default: permDenyDefault } : {})
       },
       {
         type: 'confirm',
@@ -251,13 +251,13 @@ async function editCommand(profileId, options = {}) {
       type: 'input',
       name: 'permissionsAllow',
       message: 'Permissions allow (comma-separated, empty to skip):',
-      default: permAllowDefault
+      ...(permAllowDefault ? { default: permAllowDefault } : {})
     },
     {
       type: 'input',
       name: 'permissionsDeny',
       message: 'Permissions deny (comma-separated, empty to skip):',
-      default: permDenyDefault
+      ...(permDenyDefault ? { default: permDenyDefault } : {})
     },
     {
       type: 'confirm',
@@ -314,39 +314,30 @@ async function editCommand(profileId, options = {}) {
 }
 
 /**
- * Manage existing non-core env vars: show list, allow removal.
+ * Manage existing non-core env vars: toggle-mark for deletion via checkbox.
  * Mutates the env object directly.
  */
 async function manageExistingEnvVars(env, coreKeys) {
   const nonCoreKeys = Object.keys(env).filter(k => !coreKeys.includes(k));
   if (nonCoreKeys.length === 0) return;
 
-  // Offer to remove existing non-core vars
-  let removing = true;
-  while (removing) {
-    const remainingKeys = Object.keys(env).filter(k => !coreKeys.includes(k));
-    if (remainingKeys.length === 0) break;
+  const choices = nonCoreKeys.map(k => ({
+    name: `${k} = ${env[k]}`,
+    value: k,
+    checked: false
+  }));
 
-    const choices = remainingKeys.map(k => ({
-      name: `${k} = ${env[k]}`,
-      value: k
-    }));
-    choices.push({ name: '(None - skip)', value: '__none__' });
-
-    const removeAnswer = await inquirer.prompt([
-      {
-        type: 'list',
-        name: 'removeEnvVar',
-        message: 'Remove existing environment variable?',
-        choices
-      }
-    ]);
-
-    if (removeAnswer.removeEnvVar === '__none__') {
-      removing = false;
-    } else {
-      delete env[removeAnswer.removeEnvVar];
+  const answer = await inquirer.prompt([
+    {
+      type: 'checkbox',
+      name: 'toDelete',
+      message: '选择要删除的环境变量（空格标记，回车确认）:',
+      choices
     }
+  ]);
+
+  for (const key of answer.toDelete) {
+    delete env[key];
   }
 }
 

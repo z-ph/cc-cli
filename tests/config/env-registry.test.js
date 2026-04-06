@@ -1,10 +1,11 @@
 // Mock inquirer before any require that pulls it in
+const mockPrompt = jest.fn();
 jest.mock('inquirer', () => {
   const Separator = jest.fn(function (content) {
     this.type = 'separator';
     this.content = content;
   });
-  return { default: { Separator, prompt: jest.fn() } };
+  return { default: { Separator, prompt: mockPrompt } };
 });
 
 const {
@@ -155,8 +156,75 @@ describe('env-registry', () => {
   });
 
   describe('promptEnvValue', () => {
-    it('is a function', () => {
-      expect(typeof promptEnvValue).toBe('function');
+    beforeEach(() => {
+      jest.clearAllMocks();
+    });
+
+    it('should prompt confirm for flag type and return "1" when enabled', async () => {
+      mockPrompt.mockResolvedValue({ enable: true });
+      const varDef = { key: 'DISABLE_TELEMETRY', type: 'flag', category: 'Privacy', desc: '禁用遥测' };
+      const result = await promptEnvValue(varDef, undefined);
+      expect(result).toBe('1');
+      expect(mockPrompt).toHaveBeenCalledWith([
+        expect.objectContaining({ type: 'confirm', name: 'enable' })
+      ]);
+    });
+
+    it('should prompt confirm for flag type and return null when disabled', async () => {
+      mockPrompt.mockResolvedValue({ enable: false });
+      const varDef = { key: 'DISABLE_TELEMETRY', type: 'flag', category: 'Privacy', desc: '禁用遥测' };
+      const result = await promptEnvValue(varDef, '1');
+      expect(result).toBeNull();
+    });
+
+    it('should prompt list for choice type and return selected value', async () => {
+      mockPrompt.mockResolvedValue({ value: 'high' });
+      const varDef = { key: 'CLAUDE_CODE_EFFORT_LEVEL', type: 'choice', category: 'Model', desc: '推理努力等级', choices: ['low', 'medium', 'high'] };
+      const result = await promptEnvValue(varDef, 'low');
+      expect(result).toBe('high');
+      expect(mockPrompt).toHaveBeenCalledWith([
+        expect.objectContaining({ type: 'list', name: 'value', choices: ['low', 'medium', 'high'] })
+      ]);
+    });
+
+    it('should prompt input for number type and validate digits', async () => {
+      mockPrompt.mockResolvedValue({ value: '30000' });
+      const varDef = { key: 'API_TIMEOUT_MS', type: 'number', category: 'Network', desc: 'API 超时' };
+      const result = await promptEnvValue(varDef, undefined);
+      expect(result).toBe('30000');
+      expect(mockPrompt).toHaveBeenCalledWith([
+        expect.objectContaining({ type: 'input', name: 'value', validate: expect.any(Function) })
+      ]);
+      // Verify the validator
+      const validateFn = mockPrompt.mock.calls[0][0][0].validate;
+      expect(validateFn('123')).toBe(true);
+      expect(validateFn('abc')).not.toBe(true);
+      expect(validateFn('')).toBe(true); // empty is allowed (optional)
+    });
+
+    it('should prompt input for text type and return trimmed value', async () => {
+      mockPrompt.mockResolvedValue({ value: '  http://proxy:8080  ' });
+      const varDef = { key: 'HTTP_PROXY', type: 'text', category: 'Network', desc: 'HTTP 代理' };
+      const result = await promptEnvValue(varDef, undefined);
+      expect(result).toBe('http://proxy:8080');
+    });
+
+    it('should use currentValue as default for text type', async () => {
+      mockPrompt.mockResolvedValue({ value: 'http://old:8080' });
+      const varDef = { key: 'HTTP_PROXY', type: 'text', category: 'Network', desc: 'HTTP 代理' };
+      await promptEnvValue(varDef, 'http://old:8080');
+      expect(mockPrompt).toHaveBeenCalledWith([
+        expect.objectContaining({ default: 'http://old:8080' })
+      ]);
+    });
+
+    it('should use empty string as default when currentValue is undefined for text type', async () => {
+      mockPrompt.mockResolvedValue({ value: 'new-value' });
+      const varDef = { key: 'HTTP_PROXY', type: 'text', category: 'Network', desc: 'HTTP 代理' };
+      await promptEnvValue(varDef, undefined);
+      expect(mockPrompt).toHaveBeenCalledWith([
+        expect.objectContaining({ default: '' })
+      ]);
     });
   });
 

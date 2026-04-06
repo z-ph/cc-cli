@@ -9,10 +9,7 @@ const mockPrompt = jest.fn();
 jest.mock('inquirer', () => {
   const prompt = mockPrompt;
   return {
-    default: { prompt, registerPrompt: jest.fn() },
-    prompt,
-    registerPrompt: jest.fn(),
-    Separator: class Separator { constructor(s) { this.type = 'separator'; this.line = s; } }
+    default: { prompt, registerPrompt: jest.fn(), Separator: class Separator { constructor(s) { this.type = 'separator'; this.line = s; } } },
   };
 });
 
@@ -46,7 +43,10 @@ describe('Edit Command', () => {
 
     // Default env-registry mocks
     loadEnvRegistry.mockReturnValue([
-      { key: 'HTTP_PROXY', category: 'Network', desc: 'HTTP proxy', type: 'text' }
+      { key: 'HTTP_PROXY', category: 'Network', desc: 'HTTP proxy', type: 'text' },
+      { key: 'DISABLE_TELEMETRY', category: 'Privacy', desc: '禁用遥测', type: 'flag' },
+      { key: 'CLAUDE_CODE_EFFORT_LEVEL', category: 'Model', desc: '推理努力等级', type: 'choice', choices: ['low', 'medium', 'high'] },
+      { key: 'API_TIMEOUT_MS', category: 'Network', desc: 'API 请求超时', type: 'number' },
     ]);
     buildPagedEnvSource.mockReturnValue({
       source: jest.fn(),
@@ -73,7 +73,7 @@ describe('Edit Command', () => {
    * @param {object} opts
    * @param {object} opts.profile - existing profile (to check for non-core env)
    * @param {object} opts.coreEnv - { baseUrl, authToken, model }
-   * @param {Array} opts.removeEnvVars - list of vars to remove sequentially, or null if none
+   * @param {Array} opts.removeEnvVars - list of vars to toggle-mark for deletion (each is a toggle), or null if none
    * @param {boolean} opts.addEnv - whether to add env vars
    * @param {Array} opts.selectorChoices - env-selector responses (selected values)
    * @param {object} opts.settings - { permissionsAllow, permissionsDeny, addMore }
@@ -92,16 +92,10 @@ describe('Edit Command', () => {
       model: opts.coreEnv?.model ?? ''
     });
 
-    // 3. Remove existing non-core env vars (only if any exist after core vars processed)
+    // 3. Checkbox select non-core env vars for deletion (only if any exist)
     const existingNonCore = hasNonCoreEnv(opts.profile?.env);
     if (existingNonCore) {
-      if (opts.removeEnvVars && opts.removeEnvVars.length > 0) {
-        for (const v of opts.removeEnvVars) {
-          responses.push({ removeEnvVar: v });
-        }
-      }
-      // Always close the removal loop
-      responses.push({ removeEnvVar: '__none__' });
+      responses.push({ toDelete: opts.removeEnvVars || [] });
     }
 
     // 4. Add env confirm
@@ -142,10 +136,10 @@ describe('Edit Command', () => {
       model: opts.coreEnv?.model ?? ''
     });
 
-    // Remove non-core (if existing base has non-core env)
+    // Checkbox select non-core (if existing base has non-core env)
     const existingNonCore = hasNonCoreEnv(opts.base?.env);
     if (existingNonCore) {
-      responses.push({ removeEnvVar: '__none__' });
+      responses.push({ toDelete: [] });
     }
 
     // Add env
@@ -299,9 +293,9 @@ describe('Edit Command', () => {
     expect(saved.profiles.myprofile.env).toBeUndefined();
   });
 
-  // ── Remove existing non-core env vars ──
+  // ── Checkbox select non-core env vars for deletion ──
 
-  it('should allow removing existing non-core env vars', async () => {
+  it('should delete selected vars via checkbox', async () => {
     const config = {
       profiles: {
         myprofile: {
@@ -318,12 +312,66 @@ describe('Edit Command', () => {
     chainResponses(buildProfileChain({
       profile: config.profiles.myprofile,
       coreEnv: { baseUrl: 'https://existing.com' },
-      removeEnvVars: ['CUSTOM_A']  // remove A, then __none__ auto-added
+      removeEnvVars: ['CUSTOM_A']
     }));
     await editCommand('myprofile');
 
     const saved = saveConfig.mock.calls[0][0];
     expect(saved.profiles.myprofile.env.CUSTOM_A).toBeUndefined();
+    expect(saved.profiles.myprofile.env.CUSTOM_B).toBe('value-b');
+  });
+
+  it('should delete multiple selected vars', async () => {
+    const config = {
+      profiles: {
+        myprofile: {
+          env: {
+            ANTHROPIC_BASE_URL: 'https://existing.com',
+            CUSTOM_A: 'value-a',
+            CUSTOM_B: 'value-b',
+            CUSTOM_C: 'value-c'
+          }
+        }
+      }
+    };
+    setupConfig(config);
+
+    chainResponses(buildProfileChain({
+      profile: config.profiles.myprofile,
+      coreEnv: { baseUrl: 'https://existing.com' },
+      removeEnvVars: ['CUSTOM_A', 'CUSTOM_C']
+    }));
+    await editCommand('myprofile');
+
+    const saved = saveConfig.mock.calls[0][0];
+    expect(saved.profiles.myprofile.env.CUSTOM_A).toBeUndefined();
+    expect(saved.profiles.myprofile.env.CUSTOM_B).toBe('value-b');
+    expect(saved.profiles.myprofile.env.CUSTOM_C).toBeUndefined();
+  });
+
+  it('should keep all vars when none selected', async () => {
+    const config = {
+      profiles: {
+        myprofile: {
+          env: {
+            ANTHROPIC_BASE_URL: 'https://existing.com',
+            CUSTOM_A: 'value-a',
+            CUSTOM_B: 'value-b'
+          }
+        }
+      }
+    };
+    setupConfig(config);
+
+    chainResponses(buildProfileChain({
+      profile: config.profiles.myprofile,
+      coreEnv: { baseUrl: 'https://existing.com' },
+      removeEnvVars: []
+    }));
+    await editCommand('myprofile');
+
+    const saved = saveConfig.mock.calls[0][0];
+    expect(saved.profiles.myprofile.env.CUSTOM_A).toBe('value-a');
     expect(saved.profiles.myprofile.env.CUSTOM_B).toBe('value-b');
   });
 
@@ -423,6 +471,72 @@ describe('Edit Command', () => {
     const saved = saveConfig.mock.calls[0][0];
     expect(saved.profiles.myprofile.env.MY_CUSTOM_VAR).toBe('my-value');
     expect(maybeSaveToRegistry).toHaveBeenCalled();
+  });
+
+  it('should pass existing env value to promptEnvValue when selecting registry var', async () => {
+    const config = {
+      profiles: { myprofile: { env: { HTTP_PROXY: 'http://old:8080' } } }
+    };
+    setupConfig(config);
+
+    promptEnvValue.mockResolvedValue('http://new:9090');
+
+    chainResponses(buildProfileChain({
+      profile: config.profiles.myprofile,
+      addEnv: true,
+      selectorChoices: ['HTTP_PROXY', '__done__']
+    }));
+    await editCommand('myprofile');
+
+    // promptEnvValue should be called with the existing value
+    expect(promptEnvValue).toHaveBeenCalledWith(
+      expect.objectContaining({ key: 'HTTP_PROXY' }),
+      'http://old:8080'
+    );
+    const saved = saveConfig.mock.calls[0][0];
+    expect(saved.profiles.myprofile.env.HTTP_PROXY).toBe('http://new:9090');
+  });
+
+  it('should not set env var when promptEnvValue returns empty string', async () => {
+    const config = {
+      profiles: { myprofile: { env: {} } }
+    };
+    setupConfig(config);
+
+    promptEnvValue.mockResolvedValue('');
+
+    chainResponses(buildProfileChain({
+      profile: config.profiles.myprofile,
+      addEnv: true,
+      selectorChoices: ['HTTP_PROXY', '__done__']
+    }));
+    await editCommand('myprofile');
+
+    const saved = saveConfig.mock.calls[0][0];
+    // env is empty object so profile.env is not set at all
+    expect(saved.profiles.myprofile.env).toBeUndefined();
+  });
+
+  it('should handle multiple env-selector choices in sequence', async () => {
+    const config = {
+      profiles: { myprofile: { env: {} } }
+    };
+    setupConfig(config);
+
+    promptEnvValue
+      .mockResolvedValueOnce('http://proxy:8080')
+      .mockResolvedValueOnce('1');
+
+    chainResponses(buildProfileChain({
+      profile: config.profiles.myprofile,
+      addEnv: true,
+      selectorChoices: ['HTTP_PROXY', 'DISABLE_TELEMETRY', '__done__']
+    }));
+    await editCommand('myprofile');
+
+    const saved = saveConfig.mock.calls[0][0];
+    expect(saved.profiles.myprofile.env.HTTP_PROXY).toBe('http://proxy:8080');
+    expect(saved.profiles.myprofile.env.DISABLE_TELEMETRY).toBe('1');
   });
 
   // ── Additional settings preservation ──
