@@ -1,9 +1,12 @@
 const { loadConfig, saveConfig, getLocalConfigPath, getGlobalConfigPath } = require('../config/loader');
 const { validateConfigId } = require('../config/validator');
-const { loadEnvRegistry, appendToRegistry, buildAutocompleteSource, promptEnvValue, BUILTIN_ENV_VARS } = require('../config/env-registry');
+const { loadEnvRegistry, appendToRegistry, buildAutocompleteSource, buildPagedEnvSource, promptEnvValue, BUILTIN_ENV_VARS } = require('../config/env-registry');
 const { deepMerge } = require('../config/merger');
 const { default: inquirer } = require('inquirer');
+const EnvSelectorPrompt = require('../config/env-selector-prompt');
 const fs = require('fs');
+
+inquirer.registerPrompt('env-selector', EnvSelectorPrompt);
 
 async function addCommand(profileId, options = {}) {
   const customPath = options?.target;
@@ -96,11 +99,11 @@ async function addCommand(profileId, options = {}) {
 
     if (addEnvAnswer.addEnv) {
       const registry = loadEnvRegistry();
+      const { source, controller } = buildPagedEnvSource(registry, env);
       let selecting = true;
       while (selecting) {
-        const source = buildAutocompleteSource(registry, env);
         const selectAnswer = await inquirer.prompt([
-          { type: 'autocomplete', name: 'selected', message: 'Add environment variable (search or browse):', source, pageSize: 15 }
+          { type: 'env-selector', name: 'selected', message: 'Add environment variable (← → 切换分类, 输入搜索):', source, sourceController: controller, pageSize: 15 }
         ]);
         if (selectAnswer.selected === '__done__') { selecting = false; continue; }
         if (selectAnswer.selected === '__custom__') {
@@ -240,15 +243,16 @@ async function addCommand(profileId, options = {}) {
 
   if (addEnvAnswer.addEnv) {
     const registry = loadEnvRegistry();
+    const { source, controller } = buildPagedEnvSource(registry, env);
     let selecting = true;
     while (selecting) {
-      const source = buildAutocompleteSource(registry, env);
       const selectAnswer = await inquirer.prompt([
         {
-          type: 'autocomplete',
+          type: 'env-selector',
           name: 'selected',
-          message: 'Add environment variable (search or browse):',
+          message: 'Add environment variable (← → 切换分类, 输入搜索):',
           source,
+          sourceController: controller,
           pageSize: 15
         }
       ]);

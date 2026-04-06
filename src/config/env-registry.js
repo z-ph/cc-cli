@@ -380,6 +380,77 @@ function buildAutocompleteSource(entries, existing) {
   };
 }
 
+function buildPagedEnvSource(entries, existing) {
+  const categories = [...new Set(entries.map(v => v.category))];
+  let currentIndex = 0;
+
+  const controller = {
+    switchCategory(dir) {
+      if (dir === 'next') {
+        currentIndex = (currentIndex + 1) % categories.length;
+      } else {
+        currentIndex = (currentIndex - 1 + categories.length) % categories.length;
+      }
+    },
+    get currentCategory() {
+      return categories[currentIndex];
+    },
+    categories
+  };
+
+  const source = async function (answers, input) {
+    const inquirer = require('inquirer');
+    const Separator = inquirer.default.Separator;
+    input = (input || '').toLowerCase();
+
+    const choices = [];
+
+    // 顶部常驻项
+    choices.push({ name: 'Custom - 手动输入变量名', value: '__custom__' });
+    choices.push({ name: '✓ 完成', value: '__done__' });
+
+    if (input) {
+      // 搜索模式：跨所有分类过滤
+      const filtered = entries.filter(v => {
+        if (existing && existing[v.key]) return false;
+        return v.key.toLowerCase().includes(input) || v.desc.toLowerCase().includes(input);
+      });
+
+      if (filtered.length > 0) {
+        const filteredCats = [...new Set(filtered.map(v => v.category))];
+        for (const cat of filteredCats) {
+          choices.push(new Separator(`── ${cat} ──`));
+          for (const v of filtered) {
+            if (v.category !== cat) continue;
+            const hint = v.type === 'flag' ? '(flag)' : v.type === 'choice' ? `(${v.choices.join('/')})` : `(${v.type})`;
+            choices.push({ name: `${v.key} - ${v.desc} ${hint}`, value: v.key });
+          }
+        }
+      }
+    } else {
+      // 分类模式：只显示当前分类
+      const cat = categories[currentIndex];
+      const catEntries = entries.filter(v => {
+        if (v.category !== cat) return false;
+        if (existing && existing[v.key]) return false;
+        return true;
+      });
+
+      if (catEntries.length > 0) {
+        choices.push(new Separator(`── ${cat} (${currentIndex + 1}/${categories.length}) ──`));
+        for (const v of catEntries) {
+          const hint = v.type === 'flag' ? '(flag)' : v.type === 'choice' ? `(${v.choices.join('/')})` : `(${v.type})`;
+          choices.push({ name: `${v.key} - ${v.desc} ${hint}`, value: v.key });
+        }
+      }
+    }
+
+    return choices;
+  };
+
+  return { source, controller };
+}
+
 module.exports = {
   BUILTIN_ENV_VARS,
   loadEnvRegistry,
@@ -387,6 +458,7 @@ module.exports = {
   appendToRegistry,
   buildEnvChoices,
   buildAutocompleteSource,
+  buildPagedEnvSource,
   promptEnvValue,
   getLocalRegistryPath,
   getGlobalRegistryPath

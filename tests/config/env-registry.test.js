@@ -11,6 +11,7 @@ const {
   BUILTIN_ENV_VARS,
   buildEnvChoices,
   buildAutocompleteSource,
+  buildPagedEnvSource,
   promptEnvValue,
 } = require('../../src/config/env-registry');
 
@@ -156,6 +157,98 @@ describe('env-registry', () => {
   describe('promptEnvValue', () => {
     it('is a function', () => {
       expect(typeof promptEnvValue).toBe('function');
+    });
+  });
+
+  describe('buildPagedEnvSource', () => {
+    const entries = [
+      { key: 'DISABLE_TELEMETRY', category: 'Privacy', desc: '禁用遥测', type: 'flag' },
+      { key: 'MCP_TIMEOUT', category: 'MCP', desc: 'MCP 启动超时', type: 'number' },
+      { key: 'CLAUDE_CODE_USE_BEDROCK', category: 'Provider', desc: '使用 Bedrock', type: 'flag' },
+      { key: 'API_TIMEOUT_MS', category: 'Network', desc: 'API 请求超时', type: 'number' },
+      { key: 'HTTP_PROXY', category: 'Network', desc: 'HTTP 代理', type: 'text' },
+    ];
+
+    it('returns { source, controller }', () => {
+      const result = buildPagedEnvSource(entries, {});
+      expect(typeof result.source).toBe('function');
+      expect(typeof result.controller.switchCategory).toBe('function');
+      expect(Array.isArray(result.controller.categories)).toBe(true);
+    });
+
+    it('shows Custom and Done at top in category mode', async () => {
+      const { source } = buildPagedEnvSource(entries, {});
+      const choices = await source({}, '');
+      const values = choices.filter(c => typeof c === 'object' && c.value).map(c => c.value);
+      // Custom and Done should be first two selectable items
+      expect(values[0]).toBe('__custom__');
+      expect(values[1]).toBe('__done__');
+    });
+
+    it('only shows current category entries when not searching', async () => {
+      const { source, controller } = buildPagedEnvSource(entries, {});
+      // Default category is first: Privacy (insertion order from entries)
+      expect(controller.currentCategory).toBe('Privacy');
+      const choices = await source({}, '');
+      const values = choices.filter(c => typeof c === 'object' && c.value).map(c => c.value);
+      expect(values).toContain('DISABLE_TELEMETRY');
+      expect(values).not.toContain('MCP_TIMEOUT');
+      expect(values).not.toContain('CLAUDE_CODE_USE_BEDROCK');
+    });
+
+    it('switches category with controller.switchCategory', async () => {
+      const { source, controller } = buildPagedEnvSource(entries, {});
+      // categories: Privacy(0), MCP(1), Provider(2), Network(3)
+      controller.switchCategory('next'); // MCP
+      controller.switchCategory('next'); // Provider
+      expect(controller.currentCategory).toBe('Provider');
+      const choices = await source({}, '');
+      const values = choices.filter(c => typeof c === 'object' && c.value).map(c => c.value);
+      expect(values).toContain('CLAUDE_CODE_USE_BEDROCK');
+      expect(values).not.toContain('MCP_TIMEOUT');
+    });
+
+    it('wraps around when switching past last category', async () => {
+      const { source, controller } = buildPagedEnvSource(entries, {});
+      // categories: Privacy(0), MCP(1), Provider(2), Network(3)
+      controller.switchCategory('next'); // MCP
+      controller.switchCategory('next'); // Provider
+      controller.switchCategory('next'); // Network
+      controller.switchCategory('next'); // wraps to Privacy
+      expect(controller.currentCategory).toBe('Privacy');
+    });
+
+    it('shows all matching entries in search mode (input non-empty)', async () => {
+      const { source } = buildPagedEnvSource(entries, {});
+      const choices = await source({}, 'timeout');
+      const values = choices.filter(c => typeof c === 'object' && c.value).map(c => c.value);
+      expect(values).toContain('MCP_TIMEOUT');
+      expect(values).toContain('API_TIMEOUT_MS');
+      expect(values).not.toContain('DISABLE_TELEMETRY');
+    });
+
+    it('hides already-set variables', async () => {
+      const { source } = buildPagedEnvSource(entries, { DISABLE_TELEMETRY: '1' });
+      const choices = await source({}, 'telemetry');
+      const values = choices.filter(c => typeof c === 'object' && c.value).map(c => c.value);
+      expect(values).not.toContain('DISABLE_TELEMETRY');
+    });
+
+    it('shows category index in separator (e.g. Provider (1/4))', async () => {
+      const { source } = buildPagedEnvSource(entries, {});
+      const choices = await source({}, '');
+      const separators = choices.filter(c => c.type === 'separator');
+      // Should have a separator with index
+      expect(separators.some(s => s.content.includes('(1/'))).toBe(true);
+    });
+
+    it('always includes Custom and Done even when no category entries remain', async () => {
+      const existing = {};
+      for (const e of entries) existing[e.key] = 'set';
+      const { source } = buildPagedEnvSource(entries, existing);
+      const choices = await source({}, '');
+      const values = choices.filter(c => typeof c === 'object' && c.value).map(c => c.value);
+      expect(values).toEqual(['__custom__', '__done__']);
     });
   });
 });
