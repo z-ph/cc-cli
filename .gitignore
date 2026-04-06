@@ -25,3 +25,4 @@ npm-debug.log*
 pnpm-debug.log*
 .npmrc
 cc-docs
+.ENV
