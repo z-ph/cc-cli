@@ -79,11 +79,11 @@ profiles:
 
 - **任何需求（新功能、改动、修复）都必须先在 `PRD/` 目录下编写 PRD 文档**，描述背景、目标、方案，经确认后再动手写代码。
 - **PRD 完成后必须启动 review agent 进行审查**：使用 `code-review` skill 对 PRD 进行独立审查，确保方案合理、边界清晰、测试覆盖充分。审查通过后方可进入开发阶段。
-- **开发任务使用 git worktree 隔离环境**：每个开发任务（功能、修复、重构）应在独立 worktree 中进行，避免污染主分支的工作区。流程：
-  1. 使用 `EnterWorktree` 创建临时 worktree（自动基于当前 HEAD 创建新分支）
-  2. 在 worktree 内完成开发和测试
-  3. 完成后通过 `ExitWorktree` 退出，根据情况选择 `keep`（保留分支供 PR）或 `remove`（清理临时环境）
-  4. 需要合入主分支时，从 worktree 分支创建 PR 或手动合并
+- **开发任务使用 git worktree 隔离环境**：每个开发任务（功能、修复、重构）应在独立 worktree 中进行，避免污染主分支的工作区。
+  - **创建位置**：worktree 统一创建在项目根目录下的 `.claude/worktrees/` 中（由 `EnterWorktree` 自动管理），不要手动在其他位置创建
+  - **分支命名**：`EnterWorktree` 自动生成随机名称，无需手动指定
+  - **开发流程**：创建 worktree → 在其中完成开发和测试 → 提交代码
+  - **合并与清理**：任务完成后，必须先将 worktree 中的改动合并回主分支（创建 PR 或手动 merge），**合并完成后必须删除 worktree**。使用 `ExitWorktree` 并选择 `action: "remove"` + `discard_changes: false`（有未合并改动时工具会拒绝删除，确保不会误删）
 - **严格遵循 TDD（测试驱动开发）**：先写测试，再写实现。每个功能点/修复的流程为：
   1. 编写失败的测试用例，运行 `pnpm test` 确认测试失败
   2. 编写最少的代码使测试通过，再次运行 `pnpm test` 确认通过
