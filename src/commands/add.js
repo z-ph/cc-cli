@@ -364,7 +364,7 @@ async function addCommand(profileId, options = {}) {
   saveConfig(config, configPath);
 
   console.log(`Profile '${profileId}' added successfully to '${configPath}'.`);
-  console.log(`Run 'cc ${profileId}' to use it.`);
+  console.log(`Run 'zcc ${profileId}' to use it.`);
 }
 
 async function maybeSaveToRegistry(key, currentRegistry) {

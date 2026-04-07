@@ -15,12 +15,12 @@ const { serveCommand } = require('../src/commands/serve');
 const program = new Command();
 
 program
-  .name('cc')
+  .name('zcc')
   .description('Quick launcher for Claude Code with custom configurations')
   .version('1.0.0')
   .option('-t, --target <file>', 'specify custom config file (YAML)');
 
-// Main launch command: cc <profile-id> [extra args...]
+// Main launch command: zcc <profile-id> [extra args...]
 program
   .argument('[profile-id]', 'profile ID to launch')
   .passThroughOptions()

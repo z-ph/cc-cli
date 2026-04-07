@@ -2,14 +2,14 @@
 #
 # 复制所需配置到 ~/.claude/models.yaml 并填入你的 API key
 #
-# profiles: 统一的配置方案，通过 cc <id> 启动时自动生成 settings.<id>.json 并用 --settings 传入
+# profiles: 统一的配置方案，通过 zcc <id> 启动时自动生成 settings.<id>.json 并用 --settings 传入
 #
-# base 传导链: cc <id> 启动时，自动加载 全局base → 本地base → profile
+# base 传导链: zcc <id> 启动时，自动加载 全局base → 本地base → profile
 # 优先级: profile > 本地 base > 全局 base
 # 例如: 全局 base 定义共享 token，本地 base 覆盖 URL，profile 指定模型——三层配置自动合并
 
 settings:
-  alias: cc
+  alias: zcc
 
 # base: 所有 profiles 共享的默认配置（profile 中同名字段会覆盖 base）
 # 全局 ~/.claude/models.yaml 的 base 会传导到本地项目的 profiles
@@ -77,10 +77,10 @@ profiles:
   #     ANTHROPIC_AUTH_TOKEN: sk-xxxxxxxx
   #   modelOverride:                              # 可选：模型名称映射表
   #     claude-sonnet-4-20250514: claude-opus-4-20250514
-  #   # proxy 字段由 cc serve 自动管理，无需手动添加
-  #   # 启动代理: cc serve my-proxy
-  #   # 查看代理: cc serve list
-  #   # 停止代理: cc serve stop my-proxy
+  #   # proxy 字段由 zcc serve 自动管理，无需手动添加
+  #   # 启动代理: zcc serve my-proxy
+  #   # 查看代理: zcc serve list
+  #   # 停止代理: zcc serve stop my-proxy
 
   # 强制模型模式：无 modelOverride 时，ANTHROPIC_MODEL 作为默认路由模型
   # force-model:

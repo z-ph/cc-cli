@@ -26,7 +26,7 @@ function useCommand(profileId, options = {}) {
     profile = config.base;
     if (!profile || Object.keys(profile).length === 0) {
       console.error('Error: No base config found.');
-      console.log('Run "cc add -b" or "cc parse <file> -b" to create a base config first.');
+      console.log('Run "zcc add -b" or "zcc parse <file> -b" to create a base config first.');
       process.exit(1);
     }
   } else {
@@ -45,7 +45,7 @@ function useCommand(profileId, options = {}) {
         console.log('Searched:');
         console.log('  1. Current directory: ./.claude/models.yaml');
         console.log('  2. Home directory: ~/.claude/models.yaml');
-        console.log('Run "cc list" to see available profiles.');
+        console.log('Run "zcc list" to see available profiles.');
       }
       process.exit(1);
     }

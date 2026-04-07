@@ -15,13 +15,13 @@ function aliasCommand(newAlias, options = {}) {
   }
 
   if (!newAlias || typeof newAlias !== 'string') {
-    console.log(`Current alias: ${config.settings?.alias || 'cc'}`);
+    console.log(`Current alias: ${config.settings?.alias || 'zcc'}`);
     console.log(`Config file: ${configPath}`);
-    console.log('Usage: cc alias <name>');
+    console.log('Usage: zcc alias <name>');
     return;
   }
 
-  const oldAlias = config.settings?.alias || 'cc';
+  const oldAlias = config.settings?.alias || 'zcc';
   config.settings = config.settings || {};
   config.settings.alias = newAlias;
   saveConfig(config, configPath);

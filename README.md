@@ -19,11 +19,11 @@ npm i -g @zphhpzzph/cc-cli@latest
 ### 1. 添加配置
 
 ```bash
-cc add glm51       # 默认保存到当前项目 ./claude/models.yaml
-cc add glm51 -g    # 推荐保存到全局 ~/.claude/models.yaml
+zcc add glm51       # 默认保存到当前项目 ./claude/models.yaml
+zcc add glm51 -g    # 推荐保存到全局 ~/.claude/models.yaml
 ```
 
-> **注意：** `cc add` 默认作用域为当前项目目录。推荐使用 `-g` 参数将配置添加到全局，这样在任意目录下都可以使用该配置。
+> **注意：** `zcc add` 默认作用域为当前项目目录。推荐使用 `-g` 参数将配置添加到全局，这样在任意目录下都可以使用该配置。
 
 按提示输入：
 - `ANTHROPIC_BASE_URL`: API 地址
@@ -35,14 +35,14 @@ cc add glm51 -g    # 推荐保存到全局 ~/.claude/models.yaml
 ### 2. 启动 Claude Code
 
 ```bash
-cc glm51    # 生成 settings.glm51.json，以 --settings 方式启动
+zcc glm51    # 生成 settings.glm51.json，以 --settings 方式启动
 ```
 
 ### 3. 应用配置到 settings 文件（不启动）
 
 ```bash
-cc use strict       # 写入 .claude/settings.local.json
-cc use strict -g    # 写入 ~/.claude/settings.json（全局）
+zcc use strict       # 写入 .claude/settings.local.json
+zcc use strict -g    # 写入 ~/.claude/settings.json（全局）
 ```
 
 ---
@@ -51,19 +51,19 @@ cc use strict -g    # 写入 ~/.claude/settings.json（全局）
 
 | 命令 | 说明 |
 |------|------|
-| `cc <id>` | 启动 Claude Code，自动生成 settings 文件并通过 --settings 传入 |
-| `cc add <id>` | 添加配置方案（`-b` 编辑 base） |
-| `cc edit <id>` | 编辑配置方案（`-b` 编辑 base） |
-| `cc remove <id>` | 删除配置方案 |
-| `cc parse <settings-path> [profile-id]` | 从 settings JSON 文件导入为 profile（`-b` 写入 base，`-c` 仅复制到剪贴板） |
-| `cc list` | 列出所有配置方案 |
-| `cc use [profile-id]` | 将配置写入 settings 文件（不启动，`-b` 应用 base） |
-| `cc restore` | 恢复 settings 备份 |
-| `cc alias [name]` | 修改 CLI 命令别名 |
-| `cc serve [profile-id]` | 启动本地模型代理服务（`-b` 基于 base 启动，`--run` 启动代理后启动 Claude Code） |
-| `cc serve list` | 列出运行中的代理 |
-| `cc serve stop [profile-id]` | 停止指定代理（`--all` 停止所有） |
-| `cc serve log <profile-id>` | 查看代理请求日志（`-n` 指定行数，默认 20） |
+| `zcc <id>` | 启动 Claude Code，自动生成 settings 文件并通过 --settings 传入 |
+| `zcc add <id>` | 添加配置方案（`-b` 编辑 base） |
+| `zcc edit <id>` | 编辑配置方案（`-b` 编辑 base） |
+| `zcc remove <id>` | 删除配置方案 |
+| `zcc parse <settings-path> [profile-id]` | 从 settings JSON 文件导入为 profile（`-b` 写入 base，`-c` 仅复制到剪贴板） |
+| `zcc list` | 列出所有配置方案 |
+| `zcc use [profile-id]` | 将配置写入 settings 文件（不启动，`-b` 应用 base） |
+| `zcc restore` | 恢复 settings 备份 |
+| `zcc alias [name]` | 修改 CLI 命令别名 |
+| `zcc serve [profile-id]` | 启动本地模型代理服务（`-b` 基于 base 启动，`--run` 启动代理后启动 Claude Code） |
+| `zcc serve list` | 列出运行中的代理 |
+| `zcc serve stop [profile-id]` | 停止指定代理（`--all` 停止所有） |
+| `zcc serve log <profile-id>` | 查看代理请求日志（`-n` 指定行数，默认 20） |
 
 所有命令支持 `-g`（全局）和 `-t <file>`（自定义配置文件）选项。
 
@@ -77,7 +77,7 @@ cc use strict -g    # 写入 ~/.claude/settings.json（全局）
 
 ```yaml
 settings:
-  alias: cc              # CLI 命令别名
+  alias: zcc              # CLI 命令别名
 
 base:                    # 所有 profiles 共享的默认配置（可选）
   env:                   # profile 中同名字段会覆盖 base
@@ -96,7 +96,7 @@ profiles:                # 统一的配置方案
       deny: [...]
     hooks: {...}         # 其他 Claude Code settings 字段
 
-    # 以下字段由 cc serve 自动管理，无需手动编辑
+    # 以下字段由 zcc serve 自动管理，无需手动编辑
     proxy:               # 代理服务信息（自动生成）
       url: http://localhost:34567
       pid: 12345
@@ -118,21 +118,21 @@ profiles:                # 统一的配置方案
 
 ### 启动流程
 
-`cc <id>` 的工作方式：
+`zcc <id>` 的工作方式：
 1. 加载全局 base + 本地 base（传导链）
 2. 从 `profiles[id]` 读取配置，仅使用 profile 自身内容生成 settings 文件（不合并 base，避免覆盖全局用户设置）
 3. 生成 `settings.<id>.json` 到 models.yaml 所在的 `.claude/` 目录下
 4. 使用 `claude --settings settings.<id>.json` 启动
 
-> **为什么 launch 不合并 base？** Claude Code 本身会自动加载 `~/.claude/settings.json`。如果 `--settings` 传入的文件中已包含 base 内容，base 配置项会以最高优先级覆盖用户的全局 settings，导致全局配置失效。因此 `cc <id>` 只传入 profile 自身配置，让 base 通过 Claude Code 自然加载的全局 settings 文件生效。
+> **为什么 launch 不合并 base？** Claude Code 本身会自动加载 `~/.claude/settings.json`。如果 `--settings` 传入的文件中已包含 base 内容，base 配置项会以最高优先级覆盖用户的全局 settings，导致全局配置失效。因此 `zcc <id>` 只传入 profile 自身配置，让 base 通过 Claude Code 自然加载的全局 settings 文件生效。
 
 ### Settings 合并与优先级
 
-`cc <id>` 通过 `--settings` 传入 profile 配置，但 Claude Code 仍会自动加载以下三个内置层级：
+`zcc <id>` 通过 `--settings` 传入 profile 配置，但 Claude Code 仍会自动加载以下三个内置层级：
 
 | 层级 | 文件路径 | 说明 |
 |------|----------|------|
-| 1（最高） | `--settings` 传入的文件 | `cc <id>` 生成的 `settings.<id>.json`（仅 profile 内容） |
+| 1（最高） | `--settings` 传入的文件 | `zcc <id>` 生成的 `settings.<id>.json`（仅 profile 内容） |
 | 2 | `.claude/settings.local.json` | 项目本地设置（不提交到 git） |
 | 3 | `.claude/settings.json` | 项目共享设置（提交到 git） |
 | 4（最低） | `~/.claude/settings.json` | 全局用户设置 |
@@ -161,27 +161,27 @@ profiles:                # 统一的配置方案
 
 ```bash
 # 添加/更新 base 配置（本地）
-cc add base -b
+zcc add base -b
 
 # 添加/更新 base 配置（全局）
-cc add base -b -g
+zcc add base -b -g
 
 # 编辑 base 配置（交互式引导，预填现有值）
-cc edit base -b
+zcc edit base -b
 
 # 将 base 配置应用到 settings 文件
-cc use -b
-cc use -b -g
+zcc use -b
+zcc use -b -g
 
 # 从 JSON 文件导入到 base
-cc parse ./settings.json -b
+zcc parse ./settings.json -b
 ```
 
 ---
 
-## 本地模型代理（cc serve）
+## 本地模型代理（zcc serve）
 
-`cc serve` 为 profile 启动一个本地 HTTP 反向代理，用于模型路由和名称映射。
+`zcc serve` 为 profile 启动一个本地 HTTP 反向代理，用于模型路由和名称映射。
 
 ### 使用场景
 
@@ -193,24 +193,24 @@ cc parse ./settings.json -b
 
 ```bash
 # 启动代理（profile 需配置 env.ANTHROPIC_BASE_URL）
-cc serve my-profile
+zcc serve my-profile
 
 # 启动代理并直接启动 Claude Code
-cc serve my-profile --run
+zcc serve my-profile --run
 
 # 基于 base 配置启动代理
-cc serve --base
+zcc serve --base
 
 # 查看运行中的代理
-cc serve list
+zcc serve list
 
 # 停止代理
-cc serve stop my-profile
-cc serve stop --all
+zcc serve stop my-profile
+zcc serve stop --all
 
 # 查看代理请求日志
-cc serve log my-profile          # 最近 20 条
-cc serve log my-profile -n 50    # 最近 50 条
+zcc serve log my-profile          # 最近 20 条
+zcc serve log my-profile -n 50    # 最近 50 条
 ```
 
 ### 模型路由逻辑
@@ -234,41 +234,41 @@ profiles:
       ANTHROPIC_MODEL: claude-sonnet-4-20250514
 ```
 
-> **注意：** 代理启动后会在 profile 中自动写入 `proxy` 字段（url/pid/port/token），无需手动编辑。`cc <id>` 检测到 `proxy` 字段且进程存活时，会自动通过代理地址启动。
+> **注意：** 代理启动后会在 profile 中自动写入 `proxy` 字段（url/pid/port/token），无需手动编辑。`zcc <id>` 检测到 `proxy` 字段且进程存活时，会自动通过代理地址启动。
 
 ---
 
 ## 常见问题
 
 ### Q: 提示 "Profile 'xxx' not found"
-配置不存在。先使用 `cc add xxx` 创建配置，或用 `cc list` 查看可用配置。
+配置不存在。先使用 `zcc add xxx` 创建配置，或用 `zcc list` 查看可用配置。
 
-### Q: `cc <id>` 和 `cc use <id>` 有什么区别？
-- `cc <id>`：生成临时 settings 文件并启动 Claude Code（不合并 base）
-- `cc use <id>`：将配置合并写入 `.claude/settings.local.json`（不启动，合并 base）
+### Q: `zcc <id>` 和 `zcc use <id>` 有什么区别？
+- `zcc <id>`：生成临时 settings 文件并启动 Claude Code（不合并 base）
+- `zcc use <id>`：将配置合并写入 `.claude/settings.local.json`（不启动，合并 base）
 
 ### Q: 如何恢复被覆盖的 settings 文件？
 ```bash
-cc restore       # 恢复 .claude/settings.local.json
-cc restore -g    # 恢复 ~/.claude/settings.json
+zcc restore       # 恢复 .claude/settings.local.json
+zcc restore -g    # 恢复 ~/.claude/settings.json
 ```
 
 ### Q: 如何从现有 settings JSON 导入配置？
 ```bash
-cc parse /path/to/settings.json myprofile    # 导入到 profile
-cc parse /path/to/settings.json myprofile -g  # 导入到全局 profile
-cc parse /path/to/settings.json -b             # 导入到 base
-cc parse /path/to/settings.json myprofile -c  # 复制 YAML 到剪贴板，不写入配置文件
+zcc parse /path/to/settings.json myprofile    # 导入到 profile
+zcc parse /path/to/settings.json myprofile -g  # 导入到全局 profile
+zcc parse /path/to/settings.json -b             # 导入到 base
+zcc parse /path/to/settings.json myprofile -c  # 复制 YAML 到剪贴板，不写入配置文件
 ```
 
-### Q: 命令冲突（`cc` 被其他程序占用）
+### Q: 命令冲突（`zcc` 被其他程序占用）
 修改别名：
 ```bash
-cc alias ccl    # 改用 ccl 命令
+zcc alias ccl    # 改用 ccl 命令
 ```
 
 ### Q: 代理启动后如何使用？
-代理启动后会自动写入 `proxy` 字段。直接 `cc <id>` 即可，launch 命令会检测到代理并通过代理地址启动。代理停止后会自动降级为直连。
+代理启动后会自动写入 `proxy` 字段。直接 `zcc <id>` 即可，launch 命令会检测到代理并通过代理地址启动。代理停止后会自动降级为直连。
 
 ---
 

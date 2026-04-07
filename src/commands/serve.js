@@ -170,7 +170,7 @@ async function startProxy(profileId, options) {
     const alive = await checkProxyAlive(profile.proxy);
     if (alive) {
       console.error(`代理已在运行中: ${profile.proxy.url}`);
-      console.log(`请先执行 cc serve stop ${isBase ? '' : profileId}`);
+      console.log(`请先执行 zcc serve stop ${isBase ? '' : profileId}`);
       process.exit(1);
     }
     // 进程已停止，清理旧 proxy 字段

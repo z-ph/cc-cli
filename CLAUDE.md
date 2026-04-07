@@ -20,7 +20,7 @@ No build step — this is plain Node.js (>= 18) with no transpilation.
 
 ## Architecture
 
-**Entry point:** `bin/cc.js` — Commander.js CLI. The default action (`cc <id>`) runs the launch command. Subcommands: `list`, `add`, `remove`, `edit`, `parse`, `alias`, `use`, `restore`, `serve`. All accept a global `-t, --target <file>` option to override the config file path.
+**Entry point:** `bin/cc.js` — Commander.js CLI. The default action (`zcc <id>`) runs the launch command. Subcommands: `list`, `add`, `remove`, `edit`, `parse`, `alias`, `use`, `restore`, `serve`. All accept a global `-t, --target <file>` option to override the config file path.
 
 **Command pattern:** Each command in `src/commands/` exports a single function. Commands receive positional args + an `options` object from Commander. No shared base class.
 
@@ -30,7 +30,7 @@ No build step — this is plain Node.js (>= 18) with no transpilation.
 - `merger.js` — `deepMerge()` with array concat+dedup semantics for merging settings.
 - `env-registry.js` — Manages env var metadata for interactive picker in add. Includes `buildAutocompleteSource()` for autocomplete search with ~200 built-in Claude Code env vars.
 
-**Launch command** (`src/commands/launch.js`): Reads `profiles[id]` from YAML via `findProfile(id, target, { mergeBase: false })` — **does not merge base** to avoid overriding global `~/.claude/settings.json`. Generates `settings.<id>.json` in the `.claude/` directory next to the `models.yaml`, spawns `claude --settings <path>`. Supports passthrough of any extra CLI arguments to `claude` via `passThroughOptions()` — e.g. `cc myprofile -c` becomes `claude -c --settings <path>`. If profile has a `proxy` field, verifies the proxy is alive via HTTP health check and generates `settings.<id>.proxy.json` with `ANTHROPIC_BASE_URL` set to the proxy URL.
+**Launch command** (`src/commands/launch.js`): Reads `profiles[id]` from YAML via `findProfile(id, target, { mergeBase: false })` — **does not merge base** to avoid overriding global `~/.claude/settings.json`. Generates `settings.<id>.json` in the `.claude/` directory next to the `models.yaml`, spawns `claude --settings <path>`. Supports passthrough of any extra CLI arguments to `claude` via `passThroughOptions()` — e.g. `zcc myprofile -c` becomes `claude -c --settings <path>`. If profile has a `proxy` field, verifies the proxy is alive via HTTP health check and generates `settings.<id>.proxy.json` with `ANTHROPIC_BASE_URL` set to the proxy URL.
 
 **Use command** (`src/commands/use.js`): Reads `profiles[id]` from YAML via `findProfile()` (with merge base, default behavior), merges with `settings.source.json` (original backup), writes result to settings file. Supports `--base` (`-b`) to apply `config.base` directly without a profile-id.
 
@@ -46,7 +46,7 @@ No build step — this is plain Node.js (>= 18) with no transpilation.
 **Config YAML schema:**
 ```yaml
 settings:
-  alias: cc
+  alias: zcc
 base:                           # optional — shared defaults for all profiles
   env:
     ANTHROPIC_AUTH_TOKEN: <key> # profile can override
@@ -60,7 +60,7 @@ profiles:
     permissions:                # optional
       allow: [...]
     hooks: {...}                # any Claude Code settings fields
-    proxy: {...}                # auto-managed by cc serve
+    proxy: {...}                # auto-managed by zcc serve
     modelOverride:              # optional model name mapping
       <source>: <target>
 ```
@@ -68,11 +68,11 @@ profiles:
 **Profile resolution:** `findProfile(id, path, { mergeBase: true })` loads both global and local configs, then cascades: `deepMerge(deepMerge(globalBase, localBase), profiles[id])`. Priority: profile > local base > global base. When profile is found globally only, only global base applies. `mergeBase: false` skips base merge (used by launch).
 
 **Settings file handling:**
-- `cc <id>` generates `settings.<id>.json` in the same `.claude/` dir as models.yaml, launches with `--settings`. Does NOT merge base (profile only).
-- `cc use <id>` writes to `.claude/settings.local.json` (or `~/.claude/settings.json` with `-g`). Merges base.
-- `cc use -b` writes base config directly.
+- `zcc <id>` generates `settings.<id>.json` in the same `.claude/` dir as models.yaml, launches with `--settings`. Does NOT merge base (profile only).
+- `zcc use <id>` writes to `.claude/settings.local.json` (or `~/.claude/settings.json` with `-g`). Merges base.
+- `zcc use -b` writes base config directly.
 - One-time backup of original file as `settings.source.json`, never overwritten
-- `cc restore` restores from backup
+- `zcc restore` restores from backup
 - Merge with source on each `use`: `deepMerge(sourceSettings, profile)`
 
 ## Workflow Rules

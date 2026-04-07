@@ -31,7 +31,7 @@ function listCommand(options = {}) {
   console.log('\nProfiles:');
   if (profileIds.length === 0) {
     console.log('  No profiles found.');
-    console.log('  Run "cc add <id>" to create one.');
+    console.log('  Run "zcc add <id>" to create one.');
   } else {
     for (const id of profileIds) {
       const entry = profiles[id];

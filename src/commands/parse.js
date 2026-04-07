@@ -163,7 +163,7 @@ function doSave(settings, profileId, config, configPath, resolvedPath) {
 
   console.log(`Parsed '${resolvedPath}' into profile '${profileId}'.`);
   console.log(`Saved to: ${configPath}`);
-  console.log(`Run 'cc ${profileId}' to use it.`);
+  console.log(`Run 'zcc ${profileId}' to use it.`);
 }
 
 module.exports = { parseCommand };

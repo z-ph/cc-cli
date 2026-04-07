@@ -15,7 +15,7 @@ async function launchCommand(profileId, options, extraArgs = []) {
       console.log('Searched:');
       console.log('  1. Current directory: ./.claude/models.yaml');
       console.log('  2. Home directory: ~/.claude/models.yaml');
-      console.log('Run "cc list" to see available profiles.');
+      console.log('Run "zcc list" to see available profiles.');
     }
     process.exit(1);
   }

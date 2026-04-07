@@ -3,7 +3,7 @@
   "version": "2.0.5",
   "description": "Quick launcher for Claude Code with custom configurations",
   "bin": {
-    "cc": "./bin/cc.js"
+    "zcc": "./bin/cc.js"
   },
   "files": [
     "bin",
@@ -15,7 +15,8 @@
     "test:watch": "jest --watch",
     "release:patch": "node scripts/release.js patch",
     "release:minor": "node scripts/release.js minor",
-    "release:major": "node scripts/release.js major"
+    "release:major": "node scripts/release.js major",
+    "gh:release": "node scripts/publish-github.js"
   },
   "dependencies": {
     "commander": "^12.0.0",

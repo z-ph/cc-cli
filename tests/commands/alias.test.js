@@ -26,7 +26,7 @@ describe('Alias Command', () => {
     aliasCommand();
 
     expect(mockLog).toHaveBeenCalledWith('Current alias: cc');
-    expect(mockLog).toHaveBeenCalledWith('Usage: cc alias <name>');
+    expect(mockLog).toHaveBeenCalledWith('Usage: zcc alias <name>');
   });
 
   it('should use custom config path with -t flag', () => {

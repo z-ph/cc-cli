@@ -17,7 +17,7 @@ function restoreCommand(options = {}) {
   }
 
   if (!fs.existsSync(sourcePath)) {
-    console.error('Error: No backup found. Run "cc use <config-id>" first to create a backup.');
+    console.error('Error: No backup found. Run "zcc use <config-id>" first to create a backup.');
     process.exit(1);
   }
 
