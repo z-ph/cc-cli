@@ -2,14 +2,14 @@ const { loadConfig, saveConfig, getLocalConfigPath, getGlobalConfigPath } = requ
 const { validateConfigId } = require('../config/validator');
 const { loadEnvRegistry, buildPagedEnvSource, promptEnvValue, BUILTIN_ENV_VARS } = require('../config/env-registry');
 const { deepMerge } = require('../config/merger');
-const { maybeSaveToRegistry } = require('./add');
+const { maybeSaveToRegistry, promptSubagentModel } = require('./add');
 const { default: inquirer } = require('inquirer');
 const EnvSelectorPrompt = require('../config/env-selector-prompt');
 const fs = require('fs');
 
 inquirer.registerPrompt('env-selector', EnvSelectorPrompt);
 
-const CORE_ENV_KEYS = ['ANTHROPIC_BASE_URL', 'ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_MODEL'];
+const CORE_ENV_KEYS = ['ANTHROPIC_BASE_URL', 'ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_MODEL', 'CLAUDE_CODE_SUBAGENT_MODEL'];
 
 async function editCommand(profileId, options = {}) {
   const customPath = options?.target;
@@ -70,6 +70,10 @@ async function editCommand(profileId, options = {}) {
     if (envAnswers.baseUrl.trim()) env.ANTHROPIC_BASE_URL = envAnswers.baseUrl.trim();
     if (envAnswers.authToken.trim()) env.ANTHROPIC_AUTH_TOKEN = envAnswers.authToken.trim();
     if (envAnswers.model.trim()) env.ANTHROPIC_MODEL = envAnswers.model.trim();
+
+    // CLAUDE_CODE_SUBAGENT_MODEL
+    const subagentValue = await promptSubagentModel(envAnswers.model.trim(), existingEnv.CLAUDE_CODE_SUBAGENT_MODEL || '');
+    if (subagentValue) env.CLAUDE_CODE_SUBAGENT_MODEL = subagentValue;
 
     // Preserve non-core env vars from existing
     for (const [key, value] of Object.entries(existingEnv)) {
@@ -215,6 +219,10 @@ async function editCommand(profileId, options = {}) {
   if (envAnswers.baseUrl.trim()) env.ANTHROPIC_BASE_URL = envAnswers.baseUrl.trim();
   if (envAnswers.authToken.trim()) env.ANTHROPIC_AUTH_TOKEN = envAnswers.authToken.trim();
   if (envAnswers.model.trim()) env.ANTHROPIC_MODEL = envAnswers.model.trim();
+
+  // CLAUDE_CODE_SUBAGENT_MODEL
+  const subagentValue = await promptSubagentModel(envAnswers.model.trim(), existingEnv.CLAUDE_CODE_SUBAGENT_MODEL || '');
+  if (subagentValue) env.CLAUDE_CODE_SUBAGENT_MODEL = subagentValue;
 
   // Preserve non-core env vars from existing profile
   for (const [key, value] of Object.entries(existingEnv)) {

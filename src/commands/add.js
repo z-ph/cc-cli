@@ -82,8 +82,12 @@ async function addCommand(profileId, options = {}) {
     if (envAnswers.authToken.trim()) env.ANTHROPIC_AUTH_TOKEN = envAnswers.authToken.trim();
     if (envAnswers.model.trim()) env.ANTHROPIC_MODEL = envAnswers.model.trim();
 
+    // CLAUDE_CODE_SUBAGENT_MODEL
+    const subagentValue = await promptSubagentModel(envAnswers.model.trim(), sourceEnv.CLAUDE_CODE_SUBAGENT_MODEL || '');
+    if (subagentValue) env.CLAUDE_CODE_SUBAGENT_MODEL = subagentValue;
+
     // Pre-fill non-core vars from source
-    const coreKeys = ['ANTHROPIC_BASE_URL', 'ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_MODEL'];
+    const coreKeys = ['ANTHROPIC_BASE_URL', 'ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_MODEL', 'CLAUDE_CODE_SUBAGENT_MODEL'];
     for (const [key, value] of Object.entries(sourceEnv)) {
       if (!coreKeys.includes(key)) env[key] = value;
     }
@@ -224,8 +228,12 @@ async function addCommand(profileId, options = {}) {
     env.ANTHROPIC_MODEL = envAnswers.model.trim();
   }
 
+  // CLAUDE_CODE_SUBAGENT_MODEL
+  const subagentValue = await promptSubagentModel(envAnswers.model.trim(), sourceEnv.CLAUDE_CODE_SUBAGENT_MODEL || '');
+  if (subagentValue) env.CLAUDE_CODE_SUBAGENT_MODEL = subagentValue;
+
   // Pre-fill non-core vars from source
-  const coreKeys = ['ANTHROPIC_BASE_URL', 'ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_MODEL'];
+  const coreKeys = ['ANTHROPIC_BASE_URL', 'ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_MODEL', 'CLAUDE_CODE_SUBAGENT_MODEL'];
   for (const [key, value] of Object.entries(sourceEnv)) {
     if (!coreKeys.includes(key)) {
       env[key] = value;
@@ -407,4 +415,28 @@ async function maybeSaveToRegistry(key, currentRegistry) {
   console.log(`Saved '${key}' to ${savedPath}`);
 }
 
-module.exports = { addCommand, maybeSaveToRegistry };
+/**
+ * Prompt for CLAUDE_CODE_SUBAGENT_MODEL after ANTHROPIC_MODEL.
+ * @param {string} modelValue - the ANTHROPIC_MODEL value (empty = skip)
+ * @param {string} existingValue - existing subagent model value (for pre-fill)
+ * @returns {string|null} the subagent model value, or null if not set
+ */
+async function promptSubagentModel(modelValue, existingValue) {
+  if (!modelValue) return null;
+  const sameAnswer = await inquirer.prompt([{
+    type: 'confirm',
+    name: 'sameAsModel',
+    message: 'CLAUDE_CODE_SUBAGENT_MODEL 是否与 ANTHROPIC_MODEL 一致?',
+    default: !existingValue || existingValue === modelValue
+  }]);
+  if (sameAnswer.sameAsModel) return modelValue;
+  const subAnswer = await inquirer.prompt([{
+    type: 'input',
+    name: 'subagentModel',
+    message: 'CLAUDE_CODE_SUBAGENT_MODEL (optional, enter to skip):',
+    ...(existingValue ? { default: existingValue } : {})
+  }]);
+  return subAnswer.subagentModel?.trim() || null;
+}
+
+module.exports = { addCommand, maybeSaveToRegistry, promptSubagentModel };

@@ -19,12 +19,12 @@ const { editCommand } = require('../../src/commands/edit');
 const { loadConfig, saveConfig, getLocalConfigPath, getGlobalConfigPath } = require('../../src/config/loader');
 const { loadEnvRegistry, buildPagedEnvSource, promptEnvValue, BUILTIN_ENV_VARS } = require('../../src/config/env-registry');
 const { deepMerge } = require('../../src/config/merger');
-const { maybeSaveToRegistry } = require('../../src/commands/add');
+const { maybeSaveToRegistry, promptSubagentModel } = require('../../src/commands/add');
 const fs = require('fs');
 
 // Helper: determine if a profile has non-core env vars
 function hasNonCoreEnv(env) {
-  const coreKeys = ['ANTHROPIC_BASE_URL', 'ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_MODEL'];
+  const coreKeys = ['ANTHROPIC_BASE_URL', 'ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_MODEL', 'CLAUDE_CODE_SUBAGENT_MODEL'];
   return env && Object.keys(env).some(k => !coreKeys.includes(k));
 }
 
@@ -55,6 +55,7 @@ describe('Edit Command', () => {
     promptEnvValue.mockResolvedValue('');
     deepMerge.mockImplementation((target, source) => ({ ...target, ...source }));
     maybeSaveToRegistry.mockResolvedValue(undefined);
+    promptSubagentModel.mockImplementation(async (modelValue) => modelValue || null);
   });
 
   afterEach(() => {
@@ -91,6 +92,8 @@ describe('Edit Command', () => {
       authToken: opts.coreEnv?.authToken ?? '',
       model: opts.coreEnv?.model ?? ''
     });
+
+    // Note: promptSubagentModel is mocked, does not consume inquirer responses
 
     // 3. Checkbox select non-core env vars for deletion (only if any exist)
     const existingNonCore = hasNonCoreEnv(opts.profile?.env);
@@ -135,6 +138,8 @@ describe('Edit Command', () => {
       authToken: opts.coreEnv?.authToken ?? '',
       model: opts.coreEnv?.model ?? ''
     });
+
+    // Note: promptSubagentModel is mocked, does not consume inquirer responses
 
     // Checkbox select non-core (if existing base has non-core env)
     const existingNonCore = hasNonCoreEnv(opts.base?.env);
@@ -606,5 +611,105 @@ describe('Edit Command', () => {
 
     const saved = saveConfig.mock.calls[0][0];
     expect(saved.base.env.HTTP_PROXY).toBe('http://proxy:8080');
+  });
+
+  // ── CLAUDE_CODE_SUBAGENT_MODEL ──
+
+  it('should set CLAUDE_CODE_SUBAGENT_MODEL same as ANTHROPIC_MODEL when promptSubagentModel returns model', async () => {
+    const config = {
+      profiles: { myprofile: { env: {} } }
+    };
+    setupConfig(config);
+
+    promptSubagentModel.mockResolvedValue('claude-sonnet-4-6');
+
+    chainResponses(buildProfileChain({
+      profile: config.profiles.myprofile,
+      coreEnv: { baseUrl: '', authToken: '', model: 'claude-sonnet-4-6' }
+    }));
+    await editCommand('myprofile');
+
+    const saved = saveConfig.mock.calls[0][0];
+    expect(saved.profiles.myprofile.env.CLAUDE_CODE_SUBAGENT_MODEL).toBe('claude-sonnet-4-6');
+    expect(promptSubagentModel).toHaveBeenCalledWith('claude-sonnet-4-6', '');
+  });
+
+  it('should set custom CLAUDE_CODE_SUBAGENT_MODEL when promptSubagentModel returns different value', async () => {
+    const config = {
+      profiles: { myprofile: { env: {} } }
+    };
+    setupConfig(config);
+
+    promptSubagentModel.mockResolvedValue('claude-haiku-4-5');
+
+    chainResponses(buildProfileChain({
+      profile: config.profiles.myprofile,
+      coreEnv: { baseUrl: '', authToken: '', model: 'claude-sonnet-4-6' }
+    }));
+    await editCommand('myprofile');
+
+    const saved = saveConfig.mock.calls[0][0];
+    expect(saved.profiles.myprofile.env.CLAUDE_CODE_SUBAGENT_MODEL).toBe('claude-haiku-4-5');
+  });
+
+  it('should not prompt subagent model when ANTHROPIC_MODEL is empty', async () => {
+    const config = {
+      profiles: { myprofile: { env: {} } }
+    };
+    setupConfig(config);
+
+    promptSubagentModel.mockResolvedValue(null);
+
+    chainResponses(buildProfileChain({
+      profile: config.profiles.myprofile,
+      coreEnv: { baseUrl: '', authToken: '', model: '' }
+    }));
+    await editCommand('myprofile');
+
+    expect(promptSubagentModel).toHaveBeenCalledWith('', '');
+    const saved = saveConfig.mock.calls[0][0];
+    expect(saved.profiles.myprofile.env?.CLAUDE_CODE_SUBAGENT_MODEL).toBeUndefined();
+  });
+
+  it('should not set CLAUDE_CODE_SUBAGENT_MODEL when promptSubagentModel returns null', async () => {
+    const config = {
+      profiles: { myprofile: { env: {} } }
+    };
+    setupConfig(config);
+
+    promptSubagentModel.mockResolvedValue(null);
+
+    chainResponses(buildProfileChain({
+      profile: config.profiles.myprofile,
+      coreEnv: { baseUrl: '', authToken: '', model: 'claude-sonnet-4-6' }
+    }));
+    await editCommand('myprofile');
+
+    const saved = saveConfig.mock.calls[0][0];
+    expect(saved.profiles.myprofile.env.CLAUDE_CODE_SUBAGENT_MODEL).toBeUndefined();
+  });
+
+  it('should pass existing subagent value to promptSubagentModel in edit mode', async () => {
+    const config = {
+      profiles: {
+        myprofile: {
+          env: {
+            ANTHROPIC_MODEL: 'claude-sonnet-4-6',
+            CLAUDE_CODE_SUBAGENT_MODEL: 'claude-haiku-4-5'
+          }
+        }
+      }
+    };
+    setupConfig(config);
+
+    promptSubagentModel.mockResolvedValue('claude-sonnet-4-6');
+
+    chainResponses(buildProfileChain({
+      profile: config.profiles.myprofile,
+      coreEnv: { baseUrl: '', authToken: '', model: 'claude-sonnet-4-6' }
+    }));
+    await editCommand('myprofile');
+
+    expect(promptSubagentModel).toHaveBeenCalledWith('claude-sonnet-4-6', 'claude-haiku-4-5');
   });
 });
