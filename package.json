@@ -5,6 +5,11 @@
   "bin": {
     "cc": "./bin/cc.js"
   },
+  "files": [
+    "bin",
+    "src",
+    "example.yaml"
+  ],
   "scripts": {
     "test": "jest",
     "test:watch": "jest --watch",
