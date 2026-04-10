@@ -13,6 +13,7 @@ const { parseCommand } = require('../src/commands/parse');
 const { serveCommand } = require('../src/commands/serve');
 const { testCommand } = require('../src/commands/test');
 const { modelsCommand } = require('../src/commands/models');
+const { knowledgeCommand } = require('../src/commands/knowledge');
 
 const program = new Command();
 
@@ -127,6 +128,15 @@ program
   .option('-b, --base', 'query base config instead of a profile')
   .action((profileId, options) => {
     modelsCommand(profileId, { ...options, target: options.target || program.opts().target });
+  });
+
+// Knowledge command: project knowledge base management
+const knowledgeCmd = program
+  .command('knowledge <subcommand>')
+  .description('管理项目知识库 (status/update/verify/rebuild)')
+  .option('--section <name>', 'force update specific section (for update)')
+  .action((subcommand, options) => {
+    knowledgeCommand(subcommand, options);
   });
 
 // Serve command: local model proxy (with subcommands list/stop)

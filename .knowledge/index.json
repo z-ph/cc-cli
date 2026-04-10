@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "baseCommit": "d74c6e50b096c30e283356a31813772f705c97c3",
+  "updatedAt": "2026-04-10",
+  "current": "2026-04-10-d74c6e5.md",
+  "previous": null,
+  "sections": {
+    "bin": {
+      "commit": "d74c6e50b096c30e283356a31813772f705c97c3",
+      "paths": [
+        "bin/"
+      ]
+    },
+    "config": {
+      "commit": "d74c6e50b096c30e283356a31813772f705c97c3",
+      "paths": [
+        "src/config/"
+      ]
+    },
+    "commands": {
+      "commit": "d74c6e50b096c30e283356a31813772f705c97c3",
+      "paths": [
+        "src/commands/"
+      ]
+    },
+    "proxy": {
+      "commit": "d74c6e50b096c30e283356a31813772f705c97c3",
+      "paths": [
+        "src/proxy/"
+      ]
+    },
+    "api": {
+      "commit": "d74c6e50b096c30e283356a31813772f705c97c3",
+      "paths": [
+        "src/api/"
+      ]
+    }
+  }
+}
