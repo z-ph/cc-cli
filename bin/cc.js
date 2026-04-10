@@ -11,6 +11,7 @@ const { useCommand } = require('../src/commands/use');
 const { restoreCommand } = require('../src/commands/restore');
 const { parseCommand } = require('../src/commands/parse');
 const { serveCommand } = require('../src/commands/serve');
+const { testCommand } = require('../src/commands/test');
 
 const program = new Command();
 
@@ -107,6 +108,15 @@ program
   .option('-c, --copy', 'copy YAML to clipboard instead of saving to config')
   .action((settingsPath, profileId, options) => {
     parseCommand(settingsPath, profileId, { ...options, target: options.target || program.opts().target });
+  });
+
+// Test command: test API connectivity for a profile
+program
+  .command('test [profile-id]')
+  .description('测试 profile 的 API 连接')
+  .option('-b, --base', 'test base config instead of a profile')
+  .action((profileId, options) => {
+    testCommand(profileId, { ...options, target: options.target || program.opts().target });
   });
 
 // Serve command: local model proxy (with subcommands list/stop)
