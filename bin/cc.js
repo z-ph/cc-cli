@@ -12,6 +12,7 @@ const { restoreCommand } = require('../src/commands/restore');
 const { parseCommand } = require('../src/commands/parse');
 const { serveCommand } = require('../src/commands/serve');
 const { testCommand } = require('../src/commands/test');
+const { modelsCommand } = require('../src/commands/models');
 
 const program = new Command();
 
@@ -117,6 +118,15 @@ program
   .option('-b, --base', 'test base config instead of a profile')
   .action((profileId, options) => {
     testCommand(profileId, { ...options, target: options.target || program.opts().target });
+  });
+
+// Models command: query available models for a profile
+program
+  .command('models [profile-id]')
+  .description('查询 profile 的可用模型列表')
+  .option('-b, --base', 'query base config instead of a profile')
+  .action((profileId, options) => {
+    modelsCommand(profileId, { ...options, target: options.target || program.opts().target });
   });
 
 // Serve command: local model proxy (with subcommands list/stop)
