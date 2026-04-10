@@ -20,28 +20,7 @@ No build step — this is plain Node.js (>= 18) with no transpilation.
 
 ## Architecture
 
-**Entry point:** `bin/cc.js` — Commander.js CLI. The default action (`zcc <id>`) runs the launch command. Subcommands: `list`, `add`, `remove`, `edit`, `parse`, `alias`, `use`, `restore`, `serve`. All accept a global `-t, --target <file>` option to override the config file path.
-
-**Command pattern:** Each command in `src/commands/` exports a single function. Commands receive positional args + an `options` object from Commander. No shared base class.
-
-**Config layer** (`src/config/`):
-- `loader.js` — YAML read/write/find with three-tier resolution: custom path > local (`./.claude/models.yaml`) > global (`~/.claude/models.yaml`). `findProfile(profileId, customConfigPath, options)` searches `profiles[id]`, with `options.mergeBase` controlling whether to merge base (default: true). `getSettingsDir()` returns the directory where `settings.<id>.json` should be written. `loadConfig()` auto-creates `~/.claude/` and a default config if nothing exists.
-- `validator.js` — Validates config IDs match `/^[a-zA-Z9._-]+$/`.
-- `merger.js` — `deepMerge()` with array concat+dedup semantics for merging settings.
-- `env-registry.js` — Manages env var metadata for interactive picker in add. Includes `buildAutocompleteSource()` for autocomplete search with ~200 built-in Claude Code env vars.
-
-**Launch command** (`src/commands/launch.js`): Reads `profiles[id]` from YAML via `findProfile(id, target, { mergeBase: false })` — **does not merge base** to avoid overriding global `~/.claude/settings.json`. Generates `settings.<id>.json` in the `.claude/` directory next to the `models.yaml`, spawns `claude --settings <path>`. Supports passthrough of any extra CLI arguments to `claude` via `passThroughOptions()` — e.g. `zcc myprofile -c` becomes `claude -c --settings <path>`. If profile has a `proxy` field, verifies the proxy is alive via HTTP health check and generates `settings.<id>.proxy.json` with `ANTHROPIC_BASE_URL` set to the proxy URL.
-
-**Use command** (`src/commands/use.js`): Reads `profiles[id]` from YAML via `findProfile()` (with merge base, default behavior), merges with `settings.source.json` (original backup), writes result to settings file. Supports `--base` (`-b`) to apply `config.base` directly without a profile-id.
-
-**Parse command** (`src/commands/parse.js`): Parses a settings JSON file into a profile. `profile-id` is optional when using `--base` (`-b`). Supports `-c` for copy-to-clipboard mode.
-
-**Serve command** (`src/commands/serve.js`): Manages local HTTP reverse proxy servers. Supports start, list, stop, stop-all, log operations. `--base` mode uses `config.base`, `--run` starts proxy then launches Claude Code. Worker stderr is redirected to the log file for crash diagnostics.
-
-**Proxy layer** (`src/proxy/`):
-- `server.js` — HTTP reverse proxy core (request interception, model replacement, forwarding, streaming response, health check endpoint, request logging via logger instance)
-- `worker.js` — Background process entry point (loads config, creates logger, starts server, IPC ready notification, SIGTERM/flushSync graceful shutdown)
-- `logger.js` — Async logging queue with batch file writing. Uses `setImmediate` drain loop to avoid blocking request forwarding. Supports `flush()` (async), `flushSync()` (crash path), auto-disable after consecutive write failures, queue overflow with dropped-count tracking.
+**Entry point:** `bin/cc.js` — Commander.js CLI. Subcommands: `list`, `add`, `remove`, `edit`, `parse`, `alias`, `use`, `restore`, `serve`, `knowledge`. All accept a global `-t, --target <file>` option. Each command in `src/commands/` exports a single function.
 
 **Config YAML schema:**
 ```yaml
@@ -49,31 +28,31 @@ settings:
   alias: zcc
 base:                           # optional — shared defaults for all profiles
   env:
-    ANTHROPIC_AUTH_TOKEN: <key> # profile can override
+    ANTHROPIC_AUTH_TOKEN: <key>
   permissions:
     deny: [...]
 profiles:
   <profile-id>:
     env:                        # optional
-      ANTHROPIC_BASE_URL: <url>
-      ANTHROPIC_MODEL: <name>
     permissions:                # optional
-      allow: [...]
-    hooks: {...}                # any Claude Code settings fields
+    hooks: {...}
     proxy: {...}                # auto-managed by zcc serve
-    modelOverride:              # optional model name mapping
+    modelOverride:
       <source>: <target>
 ```
 
-**Profile resolution:** `findProfile(id, path, { mergeBase: true })` loads both global and local configs, then cascades: `deepMerge(deepMerge(globalBase, localBase), profiles[id])`. Priority: profile > local base > global base. When profile is found globally only, only global base applies. `mergeBase: false` skips base merge (used by launch).
+## Knowledge Base
 
-**Settings file handling:**
-- `zcc <id>` generates `settings.<id>.json` in the same `.claude/` dir as models.yaml, launches with `--settings`. Does NOT merge base (profile only).
-- `zcc use <id>` writes to `.claude/settings.local.json` (or `~/.claude/settings.json` with `-g`). Merges base.
-- `zcc use -b` writes base config directly.
-- One-time backup of original file as `settings.source.json`, never overwritten
-- `zcc restore` restores from backup
-- Merge with source on each `use`: `deepMerge(sourceSettings, profile)`
+项目知识库位于 `.knowledge/`，通过 `zcc knowledge` 管理。详细架构知识存储在 `.knowledge/` 中的知识文件内，按需读取。
+
+**开始任何开发任务前，执行 `zcc knowledge status`。如果有 stale sections，执行 `zcc knowledge update`。**
+
+- `zcc knowledge status` — 检查知识库时效性
+- `zcc knowledge update` — 增量更新过期章节
+- `zcc knowledge verify` — 验证知识库完整性
+- `zcc knowledge rebuild` — 从零重建（仅在损坏时使用）
+
+Section 到源码路径的映射定义在 `.knowledge/index.json` 的 `sections` 字段中，新增模块时需更新。
 
 ## Workflow Rules
 
