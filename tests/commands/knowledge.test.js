@@ -7,6 +7,8 @@
 
 jest.mock('fs');
 jest.mock('child_process');
+jest.mock('../../src/api/client');
+jest.mock('../../src/config/loader');
 
 const fs = require('fs');
 const path = require('path');
@@ -18,10 +20,14 @@ const {
   rebuildKnowledge,
   classifyChange,
   parseNumstat,
+  extractSection,
+  replaceSection,
 } = require('../../src/commands/knowledge');
 
 // Helper: mock execSync to return predetermined outputs
 const { execSync } = require('child_process');
+const { sendApiRequest } = require('../../src/api/client');
+const { findProfile } = require('../../src/config/loader');
 
 const FULL_COMMIT = 'fe7092e909339f96ac4bc8e0a679d756bc02ef99';
 const SHORT_COMMIT = 'fe7092e';
@@ -416,10 +422,12 @@ describe('Knowledge Command', () => {
     });
 
     it('should use sequence number for same-day same-hash filename', async () => {
-      // Current file already has the date-hash pattern
+      const today = new Date().toISOString().slice(0, 10);
+      // Current file has today's date + same short hash as HEAD
       mockIndexOnDisk({
         ...SAMPLE_INDEX,
-        current: `2026-04-10-${SHORT_COMMIT}.md`,
+        baseCommit: FULL_COMMIT,
+        current: `${today}-${SHORT_COMMIT}.md`,
         sections: {
           ...SAMPLE_INDEX.sections,
           config: { commit: OTHER_COMMIT, paths: ['src/config/'] },
@@ -436,7 +444,7 @@ describe('Knowledge Command', () => {
 
       const result = await updateKnowledge({});
 
-      // Should produce a filename with -2 suffix since HEAD == baseCommit
+      // Should produce a filename with -2 suffix since HEAD == baseCommit and date matches
       expect(result.newFile).toMatch(/-2\.md$/);
     });
 
@@ -741,6 +749,261 @@ describe('Knowledge Command', () => {
       expect(fs.unlinkSync).toHaveBeenCalledWith(
         expect.stringContaining('.tmp')
       );
+    });
+  });
+
+  // =========================================================================
+  // Section extraction and replacement
+  // =========================================================================
+  describe('extractSection', () => {
+    it('should extract a section between two ## headers', () => {
+      const content = `# Title
+
+## Section A (foo/)
+
+Content A line 1
+Content A line 2
+
+## Section B (bar/)
+
+Content B line 1
+`;
+
+      const result = extractSection(content, 'Section A');
+      expect(result).toBe(`## Section A (foo/)\n\nContent A line 1\nContent A line 2\n`);
+    });
+
+    it('should extract last section (no trailing ##)', () => {
+      const content = `# Title
+
+## Section A (foo/)
+
+Content A
+
+## Section B (bar/)
+
+Content B line 1
+Content B line 2`;
+
+      const result = extractSection(content, 'Section B');
+      expect(result).toContain('Content B line 1');
+      expect(result).toContain('Content B line 2');
+    });
+
+    it('should return null for non-existent section', () => {
+      const content = `# Title\n\n## Section A\n\nContent A\n`;
+      const result = extractSection(content, 'NonExistent');
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('replaceSection', () => {
+    it('should replace a section while keeping others intact', () => {
+      const content = `# Title
+
+## Section A (foo/)
+
+Old content A
+
+## Section B (bar/)
+
+Old content B
+`;
+
+      const result = replaceSection(content, 'Section A', `## Section A (foo/)\n\nNew content A\n`);
+      expect(result).toContain('New content A');
+      expect(result).toContain('Old content B');
+      expect(result).not.toContain('Old content A');
+    });
+
+    it('should replace the last section', () => {
+      const content = `# Title\n\n## Section A\n\nContent A\n\n## Section B\n\nOld B\n`;
+      const result = replaceSection(content, 'Section B', `## Section B\n\nNew B\n`);
+      expect(result).toContain('Content A');
+      expect(result).toContain('New B');
+      expect(result).not.toContain('Old B');
+    });
+
+    it('should return original content if section not found', () => {
+      const content = `# Title\n\n## Section A\n\nContent A\n`;
+      const result = replaceSection(content, 'NonExistent', `## NonExistent\n\nNew\n`);
+      expect(result).toBe(content);
+    });
+  });
+
+  // =========================================================================
+  // AI-powered update
+  // =========================================================================
+  describe('updateKnowledge with AI analysis', () => {
+    const AI_RESPONSE = {
+      statusCode: 200,
+      data: {
+        choices: [{
+          message: {
+            content: `## 配置层 (src/config/)\n\nUpdated knowledge from AI analysis.\n\n### loader.js\n- Now supports custom path override\n`
+          }
+        }]
+      }
+    };
+
+    function setupForAIUpdate() {
+      const index = {
+        ...SAMPLE_INDEX,
+        sections: {
+          ...SAMPLE_INDEX.sections,
+          config: { commit: OTHER_COMMIT, paths: ['src/config/'] },
+        },
+      };
+      mockIndexOnDisk(index);
+      execSync
+        .mockReturnValueOnce(FULL_COMMIT) // git rev-parse HEAD
+        .mockReturnValueOnce('10\t5\tsrc/config/loader.js') // status numstat
+        .mockReturnValueOnce('10\t5\tsrc/config/loader.js\n+new feature\n-old code'); // diff
+      sendApiRequest.mockResolvedValue(AI_RESPONSE);
+      findProfile.mockReturnValue({
+        profile: {
+          env: {
+            ANTHROPIC_BASE_URL: 'https://api.example.com/v1',
+            ANTHROPIC_AUTH_TOKEN: 'test-token',
+            ANTHROPIC_MODEL: 'test-model',
+          },
+        },
+        configPath: '/path/to/models.yaml',
+        source: 'local',
+      });
+      fs.writeFileSync.mockImplementation(() => {});
+      fs.renameSync.mockImplementation(() => {});
+      fs.unlinkSync.mockImplementation(() => {});
+    }
+
+    it('should call AI API to analyze diff and update knowledge', async () => {
+      setupForAIUpdate();
+
+      const result = await updateKnowledge({ profile: 'test-profile' });
+
+      // Should have called the AI API
+      expect(sendApiRequest).toHaveBeenCalledWith(
+        expect.any(String), // baseUrl
+        expect.any(String), // token
+        expect.objectContaining({
+          method: 'POST',
+          path: '/chat/completions',
+        })
+      );
+
+      // Should have updated the section
+      expect(result.updated).toContain('config');
+      expect(result.aiUpdated).toBeTruthy();
+    });
+
+    it('should pass old knowledge and diff in AI request', async () => {
+      setupForAIUpdate();
+
+      await updateKnowledge({ profile: 'test-profile' });
+
+      const call = sendApiRequest.mock.calls[0];
+      const body = JSON.parse(call[2].body);
+      const userMsg = body.messages.find(m => m.role === 'user').content;
+
+      expect(userMsg).toContain('src/config/loader.js'); // diff content
+      expect(userMsg).toContain('配置层'); // old knowledge
+    });
+
+    it('should write AI-updated knowledge to file', async () => {
+      setupForAIUpdate();
+
+      await updateKnowledge({ profile: 'test-profile' });
+
+      // The written file should contain AI-generated content
+      const mdWriteCall = fs.writeFileSync.mock.calls.find(
+        c => typeof c[0] === 'string' && c[0].endsWith('.md')
+      );
+      expect(mdWriteCall).toBeTruthy();
+      expect(mdWriteCall[1]).toContain('Updated knowledge from AI analysis');
+    });
+
+    it('should fallback gracefully if AI call fails', async () => {
+      setupForAIUpdate();
+      sendApiRequest.mockRejectedValue(new Error('API unavailable'));
+
+      const result = await updateKnowledge({ profile: 'test-profile' });
+
+      // Should still complete, but flag AI failure
+      expect(result.updated).toContain('config');
+      expect(result.aiError).toBeTruthy();
+      expect(mockError).toHaveBeenCalledWith(expect.stringContaining('AI'));
+    });
+
+    it('should skip AI when no profile specified and output diff report', async () => {
+      // Same setup but without profile
+      const index = {
+        ...SAMPLE_INDEX,
+        sections: {
+          ...SAMPLE_INDEX.sections,
+          config: { commit: OTHER_COMMIT, paths: ['src/config/'] },
+        },
+      };
+      mockIndexOnDisk(index);
+      execSync
+        .mockReturnValueOnce(FULL_COMMIT)
+        .mockReturnValueOnce('10\t5\tsrc/config/loader.js')
+        .mockReturnValueOnce('10\t5\tsrc/config/loader.js\n+new');
+      fs.writeFileSync.mockImplementation(() => {});
+      fs.renameSync.mockImplementation(() => {});
+      fs.unlinkSync.mockImplementation(() => {});
+
+      const result = await updateKnowledge({});
+
+      // Should NOT call AI, just output diff report
+      expect(sendApiRequest).not.toHaveBeenCalled();
+      expect(result.updated).toContain('config');
+      expect(result.aiUpdated).toBeFalsy();
+    });
+
+    it('should update multiple sections with AI', async () => {
+      const index = {
+        ...SAMPLE_INDEX,
+        sections: {
+          ...SAMPLE_INDEX.sections,
+          config: { commit: OTHER_COMMIT, paths: ['src/config/'] },
+          proxy: { commit: OTHER_COMMIT, paths: ['src/proxy/'] },
+        },
+      };
+      mockIndexOnDisk(index);
+      execSync
+        .mockReturnValueOnce(FULL_COMMIT)
+        .mockReturnValueOnce('10\t5\tsrc/config/loader.js') // config status
+        .mockReturnValueOnce('8\t3\tsrc/proxy/server.js') // proxy status
+        .mockReturnValueOnce('10\t5\tsrc/config/loader.js\n+new') // config diff
+        .mockReturnValueOnce('8\t3\tsrc/proxy/server.js\n+new'); // proxy diff
+      findProfile.mockReturnValue({
+        profile: {
+          env: {
+            ANTHROPIC_BASE_URL: 'https://api.example.com/v1',
+            ANTHROPIC_AUTH_TOKEN: 'test-token',
+          },
+        },
+        configPath: '/path/to/models.yaml',
+        source: 'local',
+      });
+      sendApiRequest
+        .mockResolvedValueOnce({
+          statusCode: 200,
+          data: { choices: [{ message: { content: `## 配置层 (src/config/)\n\nUpdated config\n` } }] }
+        })
+        .mockResolvedValueOnce({
+          statusCode: 200,
+          data: { choices: [{ message: { content: `## 代理层 (src/proxy/)\n\nUpdated proxy\n` } }] }
+        });
+      fs.writeFileSync.mockImplementation(() => {});
+      fs.renameSync.mockImplementation(() => {});
+      fs.unlinkSync.mockImplementation(() => {});
+
+      const result = await updateKnowledge({ profile: 'test-profile' });
+
+      expect(sendApiRequest).toHaveBeenCalledTimes(2);
+      expect(result.updated).toContain('config');
+      expect(result.updated).toContain('proxy');
     });
   });
 });

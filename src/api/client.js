@@ -13,7 +13,7 @@ const https = require('https');
  * @returns {Promise<{ statusCode, statusMessage, durationMs, body, data }>}
  */
 function sendApiRequest(baseUrl, token, options = {}) {
-  const { path: reqPath, method = 'GET', timeout = 10000 } = options;
+  const { path: reqPath, method = 'GET', timeout = 10000, body } = options;
 
   return new Promise((resolve, reject) => {
     // Strip trailing slash from baseUrl
@@ -37,6 +37,10 @@ function sendApiRequest(baseUrl, token, options = {}) {
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
       headers['x-api-key'] = token;
+    }
+    if (body) {
+      headers['Content-Type'] = 'application/json';
+      headers['Content-Length'] = Buffer.byteLength(body).toString();
     }
 
     const reqOptions = {
@@ -85,6 +89,9 @@ function sendApiRequest(baseUrl, token, options = {}) {
       reject(err);
     });
 
+    if (body) {
+      req.write(body);
+    }
     req.end();
   });
 }
