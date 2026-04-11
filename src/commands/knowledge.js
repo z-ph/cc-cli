@@ -297,30 +297,100 @@ ${diff}
 
 请根据代码变更更新上述知识章节。只输出更新后的完整章节内容。`;
 
+  // Anthropic 原生格式
   const requestBody = JSON.stringify({
     model: model || 'claude-sonnet-4-6',
+    system: AI_SYSTEM_PROMPT,
     messages: [
-      { role: 'system', content: AI_SYSTEM_PROMPT },
       { role: 'user', content: userPrompt },
     ],
     max_tokens: 4096,
-    temperature: 0.3,
   });
+
+  // base URL 可能是 https://api.example.com 或 https://api.example.com/v1
+  const apiBase = baseUrl.replace(/\/+$/, '');
+  const messagesPath = apiBase.endsWith('/v1') ? '/messages' : '/v1/messages';
 
   const response = await sendApiRequest(baseUrl, token, {
     method: 'POST',
-    path: '/chat/completions',
+    path: messagesPath,
     body: requestBody,
     timeout: 60000,
   });
 
   if (response.statusCode !== 200) {
-    throw new Error(`AI API 返回 ${response.statusCode}`);
+    throw new Error(`AI API 返回 ${response.statusCode}: ${response.body?.substring(0, 500)}`);
   }
 
-  const content = response.data?.choices?.[0]?.message?.content;
+  // Anthropic 原生格式: content[0].text
+  const content = Array.isArray(response.data?.content)
+    ? response.data.content.find(b => b.type === 'text')?.text
+    : null;
   if (!content) {
-    throw new Error('AI API 返回内容为空');
+    const preview = JSON.stringify(response.data)?.substring(0, 500) || response.body?.substring(0, 500);
+    throw new Error(`AI API 返回内容为空 (status ${response.statusCode}, body: ${preview})`);
+  }
+
+  return content.trim();
+}
+
+const REBUILD_AI_SYSTEM_PROMPT = `你是一个 Node.js CLI 项目的技术文档维护者。
+你的任务是根据源码内容生成知识库章节。
+
+规则：
+1. 分析源码的模块职责、核心函数、导出接口
+2. 描述模块之间的依赖关系
+3. 保留 ## 标题行不变
+4. 用中文书写
+5. 只输出章节内容（以 ## 开头），不要任何额外解释`;
+
+/**
+ * 调用 AI API 根据源码内容生成知识章节
+ *
+ * @param {string} baseUrl - API base URL
+ * @param {string} token - API auth token
+ * @param {string} sectionTitle - 章节标题（如 '## 入口与 CLI (bin/)'）
+ * @param {string} sourceCode - 该 section 对应路径下的源码内容
+ * @param {string} model - 模型名称
+ * @returns {Promise<string>} AI 生成的知识章节
+ */
+async function analyzeSourceWithAI(baseUrl, token, sectionTitle, sourceCode, model) {
+  const userPrompt = `## 章节标题：
+${sectionTitle}
+
+## 源码内容：
+${sourceCode}
+
+请根据上述源码内容生成该章节的知识文档。只输出完整的章节内容。`;
+
+  const requestBody = JSON.stringify({
+    model: model || 'claude-sonnet-4-6',
+    system: REBUILD_AI_SYSTEM_PROMPT,
+    messages: [
+      { role: 'user', content: userPrompt },
+    ],
+    max_tokens: 4096,
+  });
+
+  const apiBase = baseUrl.replace(/\/+$/, '');
+  const messagesPath = apiBase.endsWith('/v1') ? '/messages' : '/v1/messages';
+
+  const response = await sendApiRequest(baseUrl, token, {
+    method: 'POST',
+    path: messagesPath,
+    body: requestBody,
+    timeout: 60000,
+  });
+
+  if (response.statusCode !== 200) {
+    throw new Error(`AI API 返回 ${response.statusCode}: ${response.body?.substring(0, 500)}`);
+  }
+
+  const content = Array.isArray(response.data?.content)
+    ? response.data.content.find(b => b.type === 'text')?.text
+    : null;
+  if (!content) {
+    throw new Error(`AI API 返回内容为空 (status ${response.statusCode})`);
   }
 
   return content.trim();
@@ -735,8 +805,11 @@ async function verifyKnowledge() {
 
 /**
  * 从零重建知识库
+ *
+ * @param {Object} [options]
+ * @param {string} [options.profile] - 用于 AI 分析的 profile ID
  */
-async function rebuildKnowledge() {
+async function rebuildKnowledge(options = {}) {
   let headCommit;
   try {
     headCommit = getHeadCommit();
@@ -784,6 +857,75 @@ async function rebuildKnowledge() {
     knowledgeContent += `${title}\n\n(待填充)\n\n`;
   }
 
+  // AI 分析（需要 --profile 提供凭据）
+  let aiUpdated = false;
+  let aiError = null;
+
+  if (options.profile) {
+    try {
+      const result = findProfile(options.profile, undefined, { mergeBase: true });
+      if (result.profile) {
+        const baseUrl = result.profile.env?.ANTHROPIC_BASE_URL;
+        const token = result.profile.env?.ANTHROPIC_AUTH_TOKEN;
+        const model = result.profile.env?.ANTHROPIC_MODEL;
+
+        if (baseUrl) {
+          console.log('使用 AI 分析生成知识章节...');
+
+          for (const [key, title] of Object.entries(SECTION_TITLES)) {
+            const sectionDef = DEFAULT_SECTIONS[key];
+            const paths = sectionDef.paths.join(' ');
+
+            // 获取该 section 下的文件列表
+            let fileList = '';
+            try {
+              fileList = execSync(
+                `git ls-tree -r HEAD --name-only -- ${paths}`,
+                { encoding: 'utf8' }
+              ).trim();
+            } catch {
+              fileList = '';
+            }
+
+            // 读取源码内容
+            let sourceCode = '';
+            if (fileList) {
+              const files = fileList.split('\n').filter(Boolean);
+              for (const f of files) {
+                try {
+                  const content = fs.readFileSync(f, 'utf8');
+                  sourceCode += `// === ${f} ===\n${content}\n\n`;
+                } catch {
+                  // 跳过无法读取的文件
+                }
+              }
+            }
+
+            if (sourceCode) {
+              console.log(`  分析 ${key}...`);
+              const aiContent = await analyzeSourceWithAI(baseUrl, token, title, sourceCode, model);
+              // 替换骨架中的占位内容
+              const sectionKey = title.replace(/^## /, '').split(' (')[0];
+              knowledgeContent = replaceSection(knowledgeContent, sectionKey, aiContent);
+            }
+          }
+
+          aiUpdated = true;
+          console.log('AI 分析完成');
+        } else {
+          aiError = `profile '${options.profile}' 缺少 ANTHROPIC_BASE_URL`;
+          console.error(`警告：${aiError}，跳过 AI 分析`);
+        }
+      } else {
+        aiError = `未找到 profile '${options.profile}'`;
+        console.error(`警告：${aiError}，跳过 AI 分析`);
+      }
+    } catch (err) {
+      aiError = err.message;
+      console.error(`警告：AI 分析失败 - ${err.message}`);
+    }
+  }
+
   // 原子写入
   atomicWrite(path.join(dir, fileName), knowledgeContent);
   saveIndex(index);
@@ -793,10 +935,14 @@ async function rebuildKnowledge() {
   console.log(`  Knowledge: ${KNOWLEDGE_DIR}/${fileName}`);
   console.log(`  Sections: ${Object.keys(sections).join(', ')}`);
   console.log(`  Commit: ${short}`);
-  console.log();
-  console.log('请填充知识文件中的章节内容。');
+  if (aiUpdated) {
+    console.log(`  AI: 已填充所有章节`);
+  } else {
+    console.log();
+    console.log('请填充知识文件中的章节内容。');
+  }
 
-  return { headCommit, fileName };
+  return { headCommit, fileName, aiUpdated, aiError };
 }
 
 // ---------------------------------------------------------------------------
@@ -820,7 +966,7 @@ function knowledgeCommand(subcommand, options) {
     case 'verify':
       return verifyKnowledge();
     case 'rebuild':
-      return rebuildKnowledge();
+      return rebuildKnowledge(options);
     default:
       console.error(`错误：未知子命令 '${subcommand}'`);
       console.log('可用子命令: status, update, verify, rebuild');

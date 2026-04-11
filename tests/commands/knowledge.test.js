@@ -94,7 +94,7 @@ describe('Knowledge Command', () => {
   let mockLog;
 
   beforeEach(() => {
-    jest.clearAllMocks();
+    jest.resetAllMocks();
     mockExit = jest.spyOn(process, 'exit').mockImplementation(() => {});
     mockError = jest.spyOn(console, 'error').mockImplementation(() => {});
     mockLog = jest.spyOn(console, 'log').mockImplementation(() => {});
@@ -657,6 +657,178 @@ describe('Knowledge Command', () => {
 
       expect(result.error).toBeTruthy();
     });
+
+    it('should skip AI when no --profile provided', async () => {
+      execSync.mockReturnValue(FULL_COMMIT);
+      fs.existsSync.mockReturnValue(true);
+      fs.writeFileSync.mockImplementation(() => {});
+      fs.mkdirSync.mockImplementation(() => {});
+      fs.renameSync.mockImplementation(() => {});
+      fs.readdirSync.mockReturnValue([]);
+
+      await rebuildKnowledge({});
+
+      // Should NOT call AI
+      expect(sendApiRequest).not.toHaveBeenCalled();
+
+      // Should write skeleton with (待填充)
+      const mdWriteCall = fs.writeFileSync.mock.calls.find(
+        (c) => typeof c[0] === 'string' && c[0].endsWith('.md')
+      );
+      expect(mdWriteCall[1]).toContain('(待填充)');
+    });
+
+    it('should call AI to fill sections when --profile provided', async () => {
+      execSync
+        .mockReturnValueOnce(FULL_COMMIT) // git rev-parse HEAD
+        .mockReturnValueOnce('bin/cc.js') // git ls-tree for bin
+        .mockReturnValueOnce('src/config/loader.js\nsrc/config/validator.js') // git ls-tree for config
+        .mockReturnValueOnce('src/commands/launch.js') // git ls-tree for commands
+        .mockReturnValueOnce('src/proxy/server.js') // git ls-tree for proxy
+        .mockReturnValueOnce('src/api/client.js'); // git ls-tree for api
+      fs.existsSync.mockReturnValue(true);
+      fs.writeFileSync.mockImplementation(() => {});
+      fs.mkdirSync.mockImplementation(() => {});
+      fs.renameSync.mockImplementation(() => {});
+      fs.readdirSync.mockReturnValue([]);
+      // Mock reading source files
+      fs.readFileSync.mockImplementation((p) => {
+        if (typeof p === 'string' && p.endsWith('.js')) {
+          return `// source code for ${path.basename(p)}\nfunction main() {}\n`;
+        }
+        return '';
+      });
+
+      findProfile.mockReturnValue({
+        profile: {
+          env: {
+            ANTHROPIC_BASE_URL: 'https://api.example.com/v1',
+            ANTHROPIC_AUTH_TOKEN: 'test-token',
+            ANTHROPIC_MODEL: 'test-model',
+          },
+        },
+        configPath: '/path/to/models.yaml',
+        source: 'local',
+      });
+
+      sendApiRequest.mockResolvedValue({
+        statusCode: 200,
+        data: {
+          content: [{ type: 'text', text: `## 入口与 CLI (bin/)\n\nAI-generated knowledge for bin.\n` }],
+        },
+      });
+
+      const result = await rebuildKnowledge({ profile: 'test-profile' });
+
+      expect(sendApiRequest).toHaveBeenCalled();
+      expect(result.aiUpdated).toBe(true);
+    });
+
+    it('should write AI-generated content instead of placeholder', async () => {
+      execSync
+        .mockReturnValueOnce(FULL_COMMIT)
+        .mockReturnValueOnce('bin/cc.js')
+        .mockReturnValueOnce('src/config/loader.js')
+        .mockReturnValueOnce('src/commands/launch.js')
+        .mockReturnValueOnce('src/proxy/server.js')
+        .mockReturnValueOnce('src/api/client.js');
+      fs.existsSync.mockReturnValue(true);
+      fs.writeFileSync.mockImplementation(() => {});
+      fs.mkdirSync.mockImplementation(() => {});
+      fs.renameSync.mockImplementation(() => {});
+      fs.readdirSync.mockReturnValue([]);
+      fs.readFileSync.mockImplementation((p) => {
+        if (typeof p === 'string' && p.endsWith('.js')) {
+          return `// source code\n`;
+        }
+        return '';
+      });
+
+      findProfile.mockReturnValue({
+        profile: {
+          env: {
+            ANTHROPIC_BASE_URL: 'https://api.example.com/v1',
+            ANTHROPIC_AUTH_TOKEN: 'test-token',
+          },
+        },
+        configPath: '/path/to/models.yaml',
+        source: 'local',
+      });
+
+      // Each section gets a different AI response
+      sendApiRequest
+        .mockResolvedValueOnce({
+          statusCode: 200,
+          data: { content: [{ type: 'text', text: `## 入口与 CLI (bin/)\n\nAI bin content\n` }] },
+        })
+        .mockResolvedValueOnce({
+          statusCode: 200,
+          data: { content: [{ type: 'text', text: `## 配置层 (src/config/)\n\nAI config content\n` }] },
+        })
+        .mockResolvedValueOnce({
+          statusCode: 200,
+          data: { content: [{ type: 'text', text: `## 命令层 (src/commands/)\n\nAI commands content\n` }] },
+        })
+        .mockResolvedValueOnce({
+          statusCode: 200,
+          data: { content: [{ type: 'text', text: `## 代理层 (src/proxy/)\n\nAI proxy content\n` }] },
+        })
+        .mockResolvedValueOnce({
+          statusCode: 200,
+          data: { content: [{ type: 'text', text: `## API 层 (src/api/)\n\nAI api content\n` }] },
+        });
+
+      await rebuildKnowledge({ profile: 'test-profile' });
+
+      // The final written file should contain AI content, not placeholder
+      const mdWriteCall = fs.writeFileSync.mock.calls.find(
+        (c) => typeof c[0] === 'string' && c[0].endsWith('.md')
+      );
+      expect(mdWriteCall).toBeTruthy();
+      expect(mdWriteCall[1]).toContain('AI bin content');
+      expect(mdWriteCall[1]).toContain('AI config content');
+      expect(mdWriteCall[1]).not.toContain('(待填充)');
+    });
+
+    it('should fallback to skeleton when AI fails', async () => {
+      execSync
+        .mockReturnValueOnce(FULL_COMMIT)
+        .mockReturnValueOnce('bin/cc.js');
+      fs.existsSync.mockReturnValue(true);
+      fs.writeFileSync.mockImplementation(() => {});
+      fs.mkdirSync.mockImplementation(() => {});
+      fs.renameSync.mockImplementation(() => {});
+      fs.readdirSync.mockReturnValue([]);
+      fs.readFileSync.mockImplementation((p) => {
+        if (typeof p === 'string' && p.endsWith('.js')) return '// code\n';
+        return '';
+      });
+
+      findProfile.mockReturnValue({
+        profile: {
+          env: {
+            ANTHROPIC_BASE_URL: 'https://api.example.com/v1',
+            ANTHROPIC_AUTH_TOKEN: 'test-token',
+          },
+        },
+        configPath: '/path/to/models.yaml',
+        source: 'local',
+      });
+
+      sendApiRequest.mockRejectedValue(new Error('API unavailable'));
+
+      const result = await rebuildKnowledge({ profile: 'test-profile' });
+
+      expect(result.aiError).toBeTruthy();
+      expect(mockError).toHaveBeenCalledWith(expect.stringContaining('AI'));
+
+      // Should still have written the skeleton
+      const mdWriteCall = fs.writeFileSync.mock.calls.find(
+        (c) => typeof c[0] === 'string' && c[0].endsWith('.md')
+      );
+      expect(mdWriteCall).toBeTruthy();
+      expect(mdWriteCall[1]).toContain('(待填充)');
+    });
   });
 
   // =========================================================================
@@ -838,11 +1010,7 @@ Old content B
     const AI_RESPONSE = {
       statusCode: 200,
       data: {
-        choices: [{
-          message: {
-            content: `## 配置层 (src/config/)\n\nUpdated knowledge from AI analysis.\n\n### loader.js\n- Now supports custom path override\n`
-          }
-        }]
+        content: [{ type: 'text', text: `## 配置层 (src/config/)\n\nUpdated knowledge from AI analysis.\n\n### loader.js\n- Now supports custom path override\n` }]
       }
     };
 
@@ -887,7 +1055,7 @@ Old content B
         expect.any(String), // token
         expect.objectContaining({
           method: 'POST',
-          path: '/chat/completions',
+          path: '/messages',
         })
       );
 
@@ -907,6 +1075,9 @@ Old content B
 
       expect(userMsg).toContain('src/config/loader.js'); // diff content
       expect(userMsg).toContain('配置层'); // old knowledge
+      // Anthropic format: system is top-level, not in messages
+      expect(body.system).toBeTruthy();
+      expect(body.messages[0].role).toBe('user');
     });
 
     it('should write AI-updated knowledge to file', async () => {
@@ -989,11 +1160,11 @@ Old content B
       sendApiRequest
         .mockResolvedValueOnce({
           statusCode: 200,
-          data: { choices: [{ message: { content: `## 配置层 (src/config/)\n\nUpdated config\n` } }] }
+          data: { content: [{ type: 'text', text: `## 配置层 (src/config/)\n\nUpdated config\n` }] }
         })
         .mockResolvedValueOnce({
           statusCode: 200,
-          data: { choices: [{ message: { content: `## 代理层 (src/proxy/)\n\nUpdated proxy\n` } }] }
+          data: { content: [{ type: 'text', text: `## 代理层 (src/proxy/)\n\nUpdated proxy\n` }] }
         });
       fs.writeFileSync.mockImplementation(() => {});
       fs.renameSync.mockImplementation(() => {});

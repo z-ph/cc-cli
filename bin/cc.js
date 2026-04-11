@@ -135,7 +135,7 @@ const knowledgeCmd = program
   .command('knowledge <subcommand>')
   .description('管理项目知识库 (status/update/verify/rebuild)')
   .option('--section <name>', 'force update specific section (for update)')
-  .option('--profile <id>', 'use AI analysis with this profile for update')
+  .option('--profile <id>', 'use AI analysis with this profile (for update/rebuild)')
   .action((subcommand, options) => {
     knowledgeCommand(subcommand, options);
   });
