@@ -10,6 +10,8 @@
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
+const { sendApiRequest } = require('../api/client');
+const { findProfile } = require('../config/loader');
 
 const KNOWLEDGE_DIR = '.knowledge';
 const INDEX_FILE = 'index.json';
@@ -192,6 +194,139 @@ function saveIndex(index) {
 }
 
 // ---------------------------------------------------------------------------
+// Section extraction / replacement
+// ---------------------------------------------------------------------------
+
+/**
+ * 从知识文件中提取指定 section 的内容（包含 ## 标题行）
+ * @param {string} content - 完整知识文件内容
+ * @param {string} sectionKey - section 标识（如 '配置层'，用于匹配 ## 标题）
+ * @returns {string|null} section 内容，含 ## 标题行
+ */
+function extractSection(content, sectionKey) {
+  const lines = content.split('\n');
+  let startIdx = -1;
+  let endIdx = lines.length;
+
+  // 找到目标 section 的起始行（## 标题包含 sectionKey）
+  for (let i = 0; i < lines.length; i++) {
+    if (/^## /.test(lines[i]) && lines[i].includes(sectionKey)) {
+      startIdx = i;
+      break;
+    }
+  }
+
+  if (startIdx === -1) return null;
+
+  // 找到下一个 ## 的位置
+  for (let i = startIdx + 1; i < lines.length; i++) {
+    if (/^## /.test(lines[i])) {
+      endIdx = i;
+      break;
+    }
+  }
+
+  return lines.slice(startIdx, endIdx).join('\n');
+}
+
+/**
+ * 替换知识文件中指定 section 的内容
+ * @param {string} content - 完整知识文件内容
+ * @param {string} sectionKey - section 标识
+ * @param {string} newSection - 新的 section 内容（含 ## 标题行）
+ * @returns {string} 更新后的完整内容
+ */
+function replaceSection(content, sectionKey, newSection) {
+  const lines = content.split('\n');
+  let startIdx = -1;
+  let endIdx = lines.length;
+
+  for (let i = 0; i < lines.length; i++) {
+    if (/^## /.test(lines[i]) && lines[i].includes(sectionKey)) {
+      startIdx = i;
+      break;
+    }
+  }
+
+  if (startIdx === -1) return content;
+
+  for (let i = startIdx + 1; i < lines.length; i++) {
+    if (/^## /.test(lines[i])) {
+      endIdx = i;
+      break;
+    }
+  }
+
+  const before = lines.slice(0, startIdx).join('\n');
+  const after = lines.slice(endIdx).join('\n');
+
+  return `${before}\n${newSection}\n${after}`;
+}
+
+// ---------------------------------------------------------------------------
+// AI Analysis
+// ---------------------------------------------------------------------------
+
+const AI_SYSTEM_PROMPT = `你是一个 Node.js CLI 项目的技术文档维护者。
+你的任务是根据代码变更（git diff）更新知识库章节。
+
+规则：
+1. 保持原有的结构和详细程度
+2. 新增函数、变更行为、删除的功能都要体现
+3. 删除的代码对应的知识也要删除
+4. 保留 ## 标题行不变
+5. 用中文书写
+6. 只输出更新后的章节内容（以 ## 开头），不要任何额外解释`;
+
+/**
+ * 调用 AI API 分析 diff 并生成更新的知识章节
+ *
+ * @param {string} baseUrl - API base URL
+ * @param {string} token - API auth token
+ * @param {string} oldSection - 当前 section 的知识内容
+ * @param {string} diff - 代码 diff
+ * @param {string} model - 模型名称
+ * @returns {Promise<string>} AI 生成的更新后 section
+ */
+async function analyzeWithAI(baseUrl, token, oldSection, diff, model) {
+  const userPrompt = `## 当前知识章节：
+${oldSection}
+
+## 代码变更（git diff）：
+${diff}
+
+请根据代码变更更新上述知识章节。只输出更新后的完整章节内容。`;
+
+  const requestBody = JSON.stringify({
+    model: model || 'claude-sonnet-4-6',
+    messages: [
+      { role: 'system', content: AI_SYSTEM_PROMPT },
+      { role: 'user', content: userPrompt },
+    ],
+    max_tokens: 4096,
+    temperature: 0.3,
+  });
+
+  const response = await sendApiRequest(baseUrl, token, {
+    method: 'POST',
+    path: '/chat/completions',
+    body: requestBody,
+    timeout: 60000,
+  });
+
+  if (response.statusCode !== 200) {
+    throw new Error(`AI API 返回 ${response.statusCode}`);
+  }
+
+  const content = response.data?.choices?.[0]?.message?.content;
+  if (!content) {
+    throw new Error('AI API 返回内容为空');
+  }
+
+  return content.trim();
+}
+
+// ---------------------------------------------------------------------------
 // Status
 // ---------------------------------------------------------------------------
 
@@ -298,6 +433,7 @@ function padRight(str, len) {
  *
  * @param {Object} options
  * @param {string} [options.section] - 强制更新的 section 名
+ * @param {string} [options.profile] - 用于 AI 分析的 profile ID
  */
 async function updateKnowledge(options = {}) {
   const dir = getKnowledgeDir();
@@ -341,7 +477,6 @@ async function updateKnowledge(options = {}) {
 
   // 如果没有 significant stale sections
   if (staleSections.length === 0) {
-    // 处理 minor sections：只更新 commit
     if (minorSections.length > 0) {
       for (const key of minorSections) {
         index.sections[key].commit = headCommit;
@@ -364,7 +499,7 @@ async function updateKnowledge(options = {}) {
     knowledgeContent = fs.readFileSync(knowledgePath, 'utf8');
   }
 
-  // 生成 diff 摘要
+  // 生成 diff
   const diffSummary = {};
   for (const key of staleSections) {
     const section = index.sections[key];
@@ -380,8 +515,48 @@ async function updateKnowledge(options = {}) {
     }
     diffSummary[key] = {
       paths: section.paths,
-      diff: diffOutput.substring(0, 2000), // 限制长度
+      diff: diffOutput.substring(0, 2000),
     };
+  }
+
+  // AI 分析（需要 --profile 提供凭据）
+  let aiUpdated = false;
+  let aiError = null;
+
+  if (options.profile) {
+    try {
+      const result = findProfile(options.profile, undefined, { mergeBase: true });
+      if (result.profile) {
+        const baseUrl = result.profile.env?.ANTHROPIC_BASE_URL;
+        const token = result.profile.env?.ANTHROPIC_AUTH_TOKEN;
+        const model = result.profile.env?.ANTHROPIC_MODEL;
+
+        if (baseUrl) {
+          console.log('使用 AI 分析更新知识章节...');
+          for (const key of staleSections) {
+            const title = SECTION_TITLES[key] || `## ${key}`;
+            const sectionKey = title.replace(/^## /, '');
+            const oldSection = extractSection(knowledgeContent, sectionKey.split(' (')[0]) || title;
+            const diff = diffSummary[key]?.diff || '';
+
+            console.log(`  分析 ${key}...`);
+            const newSection = await analyzeWithAI(baseUrl, token, oldSection, diff, model);
+            knowledgeContent = replaceSection(knowledgeContent, sectionKey.split(' (')[0], newSection);
+          }
+          aiUpdated = true;
+          console.log('AI 分析完成');
+        } else {
+          aiError = `profile '${options.profile}' 缺少 ANTHROPIC_BASE_URL`;
+          console.error(`警告：${aiError}，跳过 AI 分析`);
+        }
+      } else {
+        aiError = `未找到 profile '${options.profile}'`;
+        console.error(`警告：${aiError}，跳过 AI 分析`);
+      }
+    } catch (err) {
+      aiError = err.message;
+      console.error(`警告：AI 分析失败 - ${err.message}`);
+    }
   }
 
   // 判断特殊章节
@@ -403,11 +578,9 @@ async function updateKnowledge(options = {}) {
   index.baseCommit = headCommit;
   index.updatedAt = new Date().toISOString().slice(0, 10);
 
-  // 生成新文件名
+  // 生成新文件名并写入
   const newFileName = generateFileName(headCommit, index.current);
   const newFilePath = path.join(dir, newFileName);
-
-  // 原子写入新知识文件（内容暂不变更，由 Claude Code 后续填充）
   atomicWrite(newFilePath, knowledgeContent);
 
   // 更新 index.json
@@ -429,7 +602,7 @@ async function updateKnowledge(options = {}) {
     }
   }
 
-  // 输出 JSON 报告
+  // 输出报告
   const report = {
     headCommit,
     staleSections,
@@ -439,19 +612,27 @@ async function updateKnowledge(options = {}) {
     knowledgeFile: `${KNOWLEDGE_DIR}/${newFileName}`,
     newFile: newFileName,
     updated: staleSections,
+    aiUpdated,
+    aiError,
   };
 
   console.log();
-  console.log('以下章节需要更新:');
-  for (const key of staleSections) {
-    console.log(`  - ${key} (${diffSummary[key]?.paths?.join(', ')})`);
+  if (aiUpdated) {
+    console.log(`已通过 AI 分析更新 ${staleSections.length} 个章节`);
+  } else {
+    console.log('以下章节需要更新:');
+    for (const key of staleSections) {
+      console.log(`  - ${key} (${diffSummary[key]?.paths?.join(', ')})`);
+    }
   }
   if (specialSections.length > 0) {
     console.log(`特殊章节需审查: ${specialSections.join(', ')}`);
   }
-  console.log();
-  console.log('Diff 摘要:');
-  console.log(JSON.stringify(diffSummary, null, 2));
+  if (!aiUpdated && Object.keys(diffSummary).length > 0) {
+    console.log();
+    console.log('Diff 摘要:');
+    console.log(JSON.stringify(diffSummary, null, 2));
+  }
   console.log();
   console.log(`知识文件: ${KNOWLEDGE_DIR}/${newFileName}`);
 
@@ -655,4 +836,6 @@ module.exports = {
   rebuildKnowledge,
   classifyChange,
   parseNumstat,
+  extractSection,
+  replaceSection,
 };
