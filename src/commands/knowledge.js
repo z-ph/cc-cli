@@ -3,17 +3,18 @@
  *
  * `zcc knowledge` — 项目知识库管理命令
  * 基于 git commit hash 追踪知识时效性，支持增量更新。
+ * 每个 section 独立存储为 sections/<key>.md。
  *
  * 子命令: status, update, verify, rebuild
  */
 
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
-const { sendApiRequest } = require('../api/client');
-const { findProfile } = require('../config/loader');
+const { execSync, spawn } = require('child_process');
+const { findProfile, getSettingsDir } = require('../config/loader');
 
 const KNOWLEDGE_DIR = '.knowledge';
+const SECTIONS_DIR = 'sections';
 const INDEX_FILE = 'index.json';
 const TEMP_PREFIX = '.tmp-';
 
@@ -39,39 +40,30 @@ const SECTION_TITLES = {
 // Helpers
 // ---------------------------------------------------------------------------
 
-/**
- * 获取知识库目录路径（相对于项目根目录）
- */
 function getKnowledgeDir() {
   return path.resolve(KNOWLEDGE_DIR);
 }
 
-/**
- * 获取 index.json 的完整路径
- */
+function getSectionsDir() {
+  return path.join(getKnowledgeDir(), SECTIONS_DIR);
+}
+
 function getIndexPath() {
   return path.join(getKnowledgeDir(), INDEX_FILE);
 }
 
-/**
- * 获取当前 HEAD 的完整 commit hash
- */
+function getSectionPath(key) {
+  return path.join(getSectionsDir(), `${key}.md`);
+}
+
 function getHeadCommit() {
   return execSync('git rev-parse HEAD', { encoding: 'utf8' }).trim();
 }
 
-/**
- * 获取短 hash（仅用于文件名标识）
- */
 function getShortHash(commit) {
   return commit.substring(0, 7);
 }
 
-/**
- * 解析 git diff --numstat 输出
- * 格式: <added>\t<deleted>\t<filename>
- * 二进制文件标记为 -\t\t
- */
 function parseNumstat(output) {
   if (!output || !output.trim()) return [];
   return output
@@ -90,81 +82,29 @@ function parseNumstat(output) {
     });
 }
 
-/**
- * 基于 numstat 结果分类变更
- *
- * 规则：
- * - unchanged: 无变更文件
- * - minor: 单文件变更 <5 行
- * - significant: >=5 行变更 或 >=3 文件 或 新增/删除文件
- */
 function classifyChange(stats) {
   if (!stats || stats.length === 0) return 'unchanged';
-
-  // 新增/删除文件（binary 标记为 -1）
-  if (stats.some((s) => s.added === -1 || s.deleted === -1)) {
-    return 'significant';
-  }
-
-  // 3+ 文件变更
+  if (stats.some((s) => s.added === -1 || s.deleted === -1)) return 'significant';
   if (stats.length >= 3) return 'significant';
-
-  // 总变更行数
   const totalChanged = stats.reduce((sum, s) => sum + s.added + s.deleted, 0);
-
-  // >=5 行 → significant
   if (totalChanged >= 5) return 'significant';
-
-  // 单文件 <5 行 → minor
   return 'minor';
 }
 
-/**
- * 生成知识文件名
- * 格式: YYYY-MM-DD-<short-hash>.md
- * 如果同一天 HEAD 未变，使用序号
- */
-function generateFileName(headCommit, existingCurrent) {
-  const date = new Date().toISOString().slice(0, 10);
-  const short = getShortHash(headCommit);
-  const baseName = `${date}-${short}`;
-
-  // 检查是否与 current 文件名冲突（同一天同一 hash）
-  if (existingCurrent && existingCurrent.startsWith(baseName)) {
-    // 提取当前序号
-    const match = existingCurrent.match(/-(\d+)\.md$/);
-    const seq = match ? parseInt(match[1], 10) + 1 : 2;
-    return `${baseName}-${seq}.md`;
-  }
-
-  return `${baseName}.md`;
-}
-
-/**
- * 清理残留的临时文件
- */
 function cleanupTempFiles(dir) {
   if (!fs.existsSync(dir)) return;
   const files = fs.readdirSync(dir);
   for (const f of files) {
     if (f.startsWith(TEMP_PREFIX)) {
-      try {
-        fs.unlinkSync(path.join(dir, f));
-      } catch {
-        // 静默处理
-      }
+      try { fs.unlinkSync(path.join(dir, f)); } catch { /* 静默 */ }
     }
   }
 }
 
-/**
- * 原子写入文件：先写临时文件，再 rename
- */
 function atomicWrite(filePath, content) {
   const dir = path.dirname(filePath);
   const baseName = path.basename(filePath);
   const tmpPath = path.join(dir, `${TEMP_PREFIX}${Date.now()}-${baseName}`);
-
   fs.writeFileSync(tmpPath, content, 'utf8');
   fs.renameSync(tmpPath, filePath);
 }
@@ -173,245 +113,57 @@ function atomicWrite(filePath, content) {
 // Index 读写
 // ---------------------------------------------------------------------------
 
-/**
- * 读取 index.json
- */
 function loadIndex() {
   const indexPath = getIndexPath();
-  if (!fs.existsSync(indexPath)) {
-    return null;
-  }
+  if (!fs.existsSync(indexPath)) return null;
   const raw = fs.readFileSync(indexPath, 'utf8');
   return JSON.parse(raw);
 }
 
-/**
- * 写入 index.json（原子操作）
- */
 function saveIndex(index) {
-  const indexPath = getIndexPath();
-  atomicWrite(indexPath, JSON.stringify(index, null, 2) + '\n');
+  atomicWrite(getIndexPath(), JSON.stringify(index, null, 2) + '\n');
 }
 
 // ---------------------------------------------------------------------------
-// Section extraction / replacement
+// AI via Claude Code agent
 // ---------------------------------------------------------------------------
 
-/**
- * 从知识文件中提取指定 section 的内容（包含 ## 标题行）
- * @param {string} content - 完整知识文件内容
- * @param {string} sectionKey - section 标识（如 '配置层'，用于匹配 ## 标题）
- * @returns {string|null} section 内容，含 ## 标题行
- */
-function extractSection(content, sectionKey) {
-  const lines = content.split('\n');
-  let startIdx = -1;
-  let endIdx = lines.length;
+async function callClaudeCode(prompt, profileId) {
+  const { profile, configPath } = findProfile(profileId, undefined, { mergeBase: false });
+  if (!profile) throw new Error(`未找到 profile '${profileId}'`);
 
-  // 找到目标 section 的起始行（## 标题包含 sectionKey）
-  for (let i = 0; i < lines.length; i++) {
-    if (/^## /.test(lines[i]) && lines[i].includes(sectionKey)) {
-      startIdx = i;
-      break;
-    }
-  }
+  const settingsDir = getSettingsDir(configPath);
+  const settingsFile = path.join(settingsDir, `settings.${profileId}.json`);
+  fs.writeFileSync(settingsFile, JSON.stringify(profile, null, 2), 'utf8');
 
-  if (startIdx === -1) return null;
+  return new Promise((resolve, reject) => {
+    const args = ['--settings', settingsFile, '-p', '--output-format', 'text'];
+    const child = spawn('claude', args, { stdio: ['pipe', 'pipe', 'pipe'] });
 
-  // 找到下一个 ## 的位置
-  for (let i = startIdx + 1; i < lines.length; i++) {
-    if (/^## /.test(lines[i])) {
-      endIdx = i;
-      break;
-    }
-  }
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', (d) => (stdout += d));
+    child.stderr.on('data', (d) => (stderr += d));
+    child.on('close', (code) => {
+      if (code === 0) resolve(stdout.trim());
+      else reject(new Error(`Claude Code 退出码 ${code}: ${stderr.slice(0, 500)}`));
+    });
+    child.on('error', (err) => reject(err));
 
-  return lines.slice(startIdx, endIdx).join('\n');
-}
-
-/**
- * 替换知识文件中指定 section 的内容
- * @param {string} content - 完整知识文件内容
- * @param {string} sectionKey - section 标识
- * @param {string} newSection - 新的 section 内容（含 ## 标题行）
- * @returns {string} 更新后的完整内容
- */
-function replaceSection(content, sectionKey, newSection) {
-  const lines = content.split('\n');
-  let startIdx = -1;
-  let endIdx = lines.length;
-
-  for (let i = 0; i < lines.length; i++) {
-    if (/^## /.test(lines[i]) && lines[i].includes(sectionKey)) {
-      startIdx = i;
-      break;
-    }
-  }
-
-  if (startIdx === -1) return content;
-
-  for (let i = startIdx + 1; i < lines.length; i++) {
-    if (/^## /.test(lines[i])) {
-      endIdx = i;
-      break;
-    }
-  }
-
-  const before = lines.slice(0, startIdx).join('\n');
-  const after = lines.slice(endIdx).join('\n');
-
-  return `${before}\n${newSection}\n${after}`;
-}
-
-// ---------------------------------------------------------------------------
-// AI Analysis
-// ---------------------------------------------------------------------------
-
-const AI_SYSTEM_PROMPT = `你是一个 Node.js CLI 项目的技术文档维护者。
-你的任务是根据代码变更（git diff）更新知识库章节。
-
-规则：
-1. 保持原有的结构和详细程度
-2. 新增函数、变更行为、删除的功能都要体现
-3. 删除的代码对应的知识也要删除
-4. 保留 ## 标题行不变
-5. 用中文书写
-6. 只输出更新后的章节内容（以 ## 开头），不要任何额外解释`;
-
-/**
- * 调用 AI API 分析 diff 并生成更新的知识章节
- *
- * @param {string} baseUrl - API base URL
- * @param {string} token - API auth token
- * @param {string} oldSection - 当前 section 的知识内容
- * @param {string} diff - 代码 diff
- * @param {string} model - 模型名称
- * @returns {Promise<string>} AI 生成的更新后 section
- */
-async function analyzeWithAI(baseUrl, token, oldSection, diff, model) {
-  const userPrompt = `## 当前知识章节：
-${oldSection}
-
-## 代码变更（git diff）：
-${diff}
-
-请根据代码变更更新上述知识章节。只输出更新后的完整章节内容。`;
-
-  // Anthropic 原生格式
-  const requestBody = JSON.stringify({
-    model: model || 'claude-sonnet-4-6',
-    system: AI_SYSTEM_PROMPT,
-    messages: [
-      { role: 'user', content: userPrompt },
-    ],
-    max_tokens: 4096,
+    child.stdin.write(prompt);
+    child.stdin.end();
   });
-
-  // base URL 可能是 https://api.example.com 或 https://api.example.com/v1
-  const apiBase = baseUrl.replace(/\/+$/, '');
-  const messagesPath = apiBase.endsWith('/v1') ? '/messages' : '/v1/messages';
-
-  const response = await sendApiRequest(baseUrl, token, {
-    method: 'POST',
-    path: messagesPath,
-    body: requestBody,
-    timeout: 60000,
-  });
-
-  if (response.statusCode !== 200) {
-    throw new Error(`AI API 返回 ${response.statusCode}: ${response.body?.substring(0, 500)}`);
-  }
-
-  // Anthropic 原生格式: content[0].text
-  const content = Array.isArray(response.data?.content)
-    ? response.data.content.find(b => b.type === 'text')?.text
-    : null;
-  if (!content) {
-    const preview = JSON.stringify(response.data)?.substring(0, 500) || response.body?.substring(0, 500);
-    throw new Error(`AI API 返回内容为空 (status ${response.statusCode}, body: ${preview})`);
-  }
-
-  return content.trim();
-}
-
-const REBUILD_AI_SYSTEM_PROMPT = `你是一个 Node.js CLI 项目的技术文档维护者。
-你的任务是根据源码内容生成知识库章节。
-
-规则：
-1. 分析源码的模块职责、核心函数、导出接口
-2. 描述模块之间的依赖关系
-3. 保留 ## 标题行不变
-4. 用中文书写
-5. 只输出章节内容（以 ## 开头），不要任何额外解释`;
-
-/**
- * 调用 AI API 根据源码内容生成知识章节
- *
- * @param {string} baseUrl - API base URL
- * @param {string} token - API auth token
- * @param {string} sectionTitle - 章节标题（如 '## 入口与 CLI (bin/)'）
- * @param {string} sourceCode - 该 section 对应路径下的源码内容
- * @param {string} model - 模型名称
- * @returns {Promise<string>} AI 生成的知识章节
- */
-async function analyzeSourceWithAI(baseUrl, token, sectionTitle, sourceCode, model) {
-  const userPrompt = `## 章节标题：
-${sectionTitle}
-
-## 源码内容：
-${sourceCode}
-
-请根据上述源码内容生成该章节的知识文档。只输出完整的章节内容。`;
-
-  const requestBody = JSON.stringify({
-    model: model || 'claude-sonnet-4-6',
-    system: REBUILD_AI_SYSTEM_PROMPT,
-    messages: [
-      { role: 'user', content: userPrompt },
-    ],
-    max_tokens: 4096,
-  });
-
-  const apiBase = baseUrl.replace(/\/+$/, '');
-  const messagesPath = apiBase.endsWith('/v1') ? '/messages' : '/v1/messages';
-
-  const response = await sendApiRequest(baseUrl, token, {
-    method: 'POST',
-    path: messagesPath,
-    body: requestBody,
-    timeout: 60000,
-  });
-
-  if (response.statusCode !== 200) {
-    throw new Error(`AI API 返回 ${response.statusCode}: ${response.body?.substring(0, 500)}`);
-  }
-
-  const content = Array.isArray(response.data?.content)
-    ? response.data.content.find(b => b.type === 'text')?.text
-    : null;
-  if (!content) {
-    throw new Error(`AI API 返回内容为空 (status ${response.statusCode})`);
-  }
-
-  return content.trim();
 }
 
 // ---------------------------------------------------------------------------
 // Status
 // ---------------------------------------------------------------------------
 
-/**
- * 检查知识库时效性
- * 返回 { stale, minor, unchanged, exitCode, error? }
- */
 async function statusKnowledge() {
   const dir = getKnowledgeDir();
   const indexPath = getIndexPath();
 
-  // 清理残留临时文件
-  if (fs.existsSync(dir)) {
-    cleanupTempFiles(dir);
-  }
+  if (fs.existsSync(dir)) cleanupTempFiles(dir);
 
   if (!fs.existsSync(indexPath)) {
     const msg = '知识库不存在，请先运行 zcc knowledge rebuild';
@@ -432,7 +184,6 @@ async function statusKnowledge() {
 
   console.log('Knowledge Base Status');
   console.log(`  Base commit: ${getShortHash(index.baseCommit)}  (${headCommit === index.baseCommit ? 'HEAD matches' : 'HEAD is ' + getShortHash(headCommit)})`);
-  console.log(`  Knowledge file: .knowledge/${index.current}`);
   console.log();
 
   const stale = [];
@@ -446,17 +197,11 @@ async function statusKnowledge() {
       continue;
     }
 
-    // 检查变更
     const paths = section.paths.join(' ');
     let numstatOutput;
     try {
-      numstatOutput = execSync(
-        `git diff ${section.commit}..${headCommit} --numstat -- ${paths}`,
-        { encoding: 'utf8' }
-      );
-    } catch {
-      numstatOutput = '';
-    }
+      numstatOutput = execSync(`git diff ${section.commit}..${headCommit} --numstat -- ${paths}`, { encoding: 'utf8' });
+    } catch { numstatOutput = ''; }
 
     const stats = parseNumstat(numstatOutput);
     const classification = classifyChange(stats);
@@ -466,11 +211,10 @@ async function statusKnowledge() {
       console.log(`  ${padRight(key, 10)} ✅ up to date`);
     } else if (classification === 'minor') {
       minor.push(key);
-      console.log(`  ${padRight(key, 10)} ⚡ minor (${stats.length} file${stats.length > 1 ? 's' : ''} changed)`);
+      console.log(`  ${padRight(key, 10)} ⚡ minor`);
     } else {
       stale.push(key);
-      const totalChanged = stats.reduce((s, x) => s + x.added + x.deleted, 0);
-      console.log(`  ${padRight(key, 10)} ⚠️  stale (${stats.length} file${stats.length > 1 ? 's' : ''} changed since ${getShortHash(section.commit)})`);
+      console.log(`  ${padRight(key, 10)} ⚠️  stale (since ${getShortHash(section.commit)})`);
     }
   }
 
@@ -481,7 +225,7 @@ async function statusKnowledge() {
     console.log(`运行 'zcc knowledge update' 更新过期章节`);
   } else if (minor.length > 0) {
     console.log();
-    console.log(`运行 'zcc knowledge update' 更新 minor 章节，或 'zcc knowledge update --section <name>' 强制更新`);
+    console.log(`运行 'zcc knowledge update' 更新 minor 章节`);
   } else {
     console.log();
     console.log('知识库已是最新');
@@ -498,13 +242,6 @@ function padRight(str, len) {
 // Update
 // ---------------------------------------------------------------------------
 
-/**
- * 增量更新知识库
- *
- * @param {Object} options
- * @param {string} [options.section] - 强制更新的 section 名
- * @param {string} [options.profile] - 用于 AI 分析的 profile ID
- */
 async function updateKnowledge(options = {}) {
   const dir = getKnowledgeDir();
   cleanupTempFiles(dir);
@@ -517,7 +254,6 @@ async function updateKnowledge(options = {}) {
 
   const headCommit = getHeadCommit();
 
-  // 收集所有 section 状态
   const staleSections = [];
   const minorSections = [];
 
@@ -527,13 +263,8 @@ async function updateKnowledge(options = {}) {
     const paths = section.paths.join(' ');
     let numstatOutput;
     try {
-      numstatOutput = execSync(
-        `git diff ${section.commit}..${headCommit} --numstat -- ${paths}`,
-        { encoding: 'utf8' }
-      );
-    } catch {
-      numstatOutput = '';
-    }
+      numstatOutput = execSync(`git diff ${section.commit}..${headCommit} --numstat -- ${paths}`, { encoding: 'utf8' });
+    } catch { numstatOutput = ''; }
 
     const stats = parseNumstat(numstatOutput);
     const classification = classifyChange(stats);
@@ -545,7 +276,6 @@ async function updateKnowledge(options = {}) {
     }
   }
 
-  // 如果没有 significant stale sections
   if (staleSections.length === 0) {
     if (minorSections.length > 0) {
       for (const key of minorSections) {
@@ -562,67 +292,58 @@ async function updateKnowledge(options = {}) {
     return { updated: [], headCommit };
   }
 
-  // 读取当前知识文件
-  const knowledgePath = path.join(dir, index.current);
-  let knowledgeContent = '';
-  if (fs.existsSync(knowledgePath)) {
-    knowledgeContent = fs.readFileSync(knowledgePath, 'utf8');
-  }
-
-  // 生成 diff
+  // 收集 diff 摘要
   const diffSummary = {};
   for (const key of staleSections) {
     const section = index.sections[key];
     const paths = section.paths.join(' ');
     let diffOutput;
     try {
-      diffOutput = execSync(
-        `git diff ${section.commit}..${headCommit} -- ${paths}`,
-        { encoding: 'utf8' }
-      );
-    } catch {
-      diffOutput = '';
-    }
-    diffSummary[key] = {
-      paths: section.paths,
-      diff: diffOutput.substring(0, 2000),
-    };
+      diffOutput = execSync(`git diff ${section.commit}..${headCommit} -- ${paths}`, { encoding: 'utf8' });
+    } catch { diffOutput = ''; }
+    diffSummary[key] = { paths: section.paths, diff: diffOutput.substring(0, 2000) };
   }
 
-  // AI 分析（需要 --profile 提供凭据）
+  // AI 分析
   let aiUpdated = false;
   let aiError = null;
 
   if (options.profile) {
     try {
-      const result = findProfile(options.profile, undefined, { mergeBase: true });
-      if (result.profile) {
-        const baseUrl = result.profile.env?.ANTHROPIC_BASE_URL;
-        const token = result.profile.env?.ANTHROPIC_AUTH_TOKEN;
-        const model = result.profile.env?.ANTHROPIC_MODEL;
+      console.log('使用 AI 分析更新知识章节...');
 
-        if (baseUrl) {
-          console.log('使用 AI 分析更新知识章节...');
-          for (const key of staleSections) {
-            const title = SECTION_TITLES[key] || `## ${key}`;
-            const sectionKey = title.replace(/^## /, '');
-            const oldSection = extractSection(knowledgeContent, sectionKey.split(' (')[0]) || title;
-            const diff = diffSummary[key]?.diff || '';
+      for (const key of staleSections) {
+        const title = SECTION_TITLES[key] || `## ${key}`;
+        const sectionFile = getSectionPath(key);
+        const oldContent = fs.existsSync(sectionFile) ? fs.readFileSync(sectionFile, 'utf8') : '';
+        const diff = diffSummary[key]?.diff || '';
 
-            console.log(`  分析 ${key}...`);
-            const newSection = await analyzeWithAI(baseUrl, token, oldSection, diff, model);
-            knowledgeContent = replaceSection(knowledgeContent, sectionKey.split(' (')[0], newSection);
-          }
-          aiUpdated = true;
-          console.log('AI 分析完成');
-        } else {
-          aiError = `profile '${options.profile}' 缺少 ANTHROPIC_BASE_URL`;
-          console.error(`警告：${aiError}，跳过 AI 分析`);
-        }
-      } else {
-        aiError = `未找到 profile '${options.profile}'`;
-        console.error(`警告：${aiError}，跳过 AI 分析`);
+        const prompt = `你是项目知识库维护者。知识库章节需要更新。
+
+章节标题：${title}
+源码路径：${diffSummary[key]?.paths?.join(', ') || key}
+
+从 commit ${getShortHash(index.sections[key]?.commit || '')} 到 HEAD 的变更：
+${diff}
+
+当前章节内容：
+${oldContent}
+
+请读取变更的源码文件，理解变更内容，在此基础上更新章节。
+要求：
+1. 保持原有结构，只修改与变更相关的部分
+2. 新增函数、变更行为、删除的功能都要体现
+3. 以 ${title} 开头
+4. 用中文书写
+5. 只输出更新后的完整章节内容`;
+
+        console.log(`  分析 ${key}...`);
+        const newContent = await callClaudeCode(prompt, options.profile);
+        atomicWrite(sectionFile, newContent);
       }
+
+      aiUpdated = true;
+      console.log('AI 分析完成');
     } catch (err) {
       aiError = err.message;
       console.error(`警告：AI 分析失败 - ${err.message}`);
@@ -631,61 +352,17 @@ async function updateKnowledge(options = {}) {
 
   // 判断特殊章节
   const specialSections = [];
-  if (staleSections.length >= 2) {
-    specialSections.push('cross-module');
-  }
-  if (staleSections.includes('config')) {
-    specialSections.push('non-obvious');
-  }
+  if (staleSections.length >= 2) specialSections.push('cross-module');
+  if (staleSections.includes('config')) specialSections.push('non-obvious');
 
   // 更新 index
-  for (const key of staleSections) {
-    index.sections[key].commit = headCommit;
-  }
-  for (const key of minorSections) {
-    index.sections[key].commit = headCommit;
-  }
+  for (const key of staleSections) index.sections[key].commit = headCommit;
+  for (const key of minorSections) index.sections[key].commit = headCommit;
   index.baseCommit = headCommit;
   index.updatedAt = new Date().toISOString().slice(0, 10);
-
-  // 生成新文件名并写入
-  const newFileName = generateFileName(headCommit, index.current);
-  const newFilePath = path.join(dir, newFileName);
-  atomicWrite(newFilePath, knowledgeContent);
-
-  // 更新 index.json
-  const oldCurrent = index.current;
-  const oldPrevious = index.previous;
-  index.current = newFileName;
-  index.previous = oldCurrent;
   saveIndex(index);
 
-  // 删除旧 previous
-  if (oldPrevious) {
-    const oldPrevPath = path.join(dir, oldPrevious);
-    try {
-      if (fs.existsSync(oldPrevPath)) {
-        fs.unlinkSync(oldPrevPath);
-      }
-    } catch {
-      // 静默处理
-    }
-  }
-
   // 输出报告
-  const report = {
-    headCommit,
-    staleSections,
-    minorSections,
-    specialSections,
-    diffSummary,
-    knowledgeFile: `${KNOWLEDGE_DIR}/${newFileName}`,
-    newFile: newFileName,
-    updated: staleSections,
-    aiUpdated,
-    aiError,
-  };
-
   console.log();
   if (aiUpdated) {
     console.log(`已通过 AI 分析更新 ${staleSections.length} 个章节`);
@@ -698,37 +375,32 @@ async function updateKnowledge(options = {}) {
   if (specialSections.length > 0) {
     console.log(`特殊章节需审查: ${specialSections.join(', ')}`);
   }
-  if (!aiUpdated && Object.keys(diffSummary).length > 0) {
-    console.log();
-    console.log('Diff 摘要:');
-    console.log(JSON.stringify(diffSummary, null, 2));
-  }
-  console.log();
-  console.log(`知识文件: ${KNOWLEDGE_DIR}/${newFileName}`);
 
-  return report;
+  return {
+    headCommit,
+    updated: staleSections,
+    minorUpdated: minorSections,
+    specialSections,
+    aiUpdated,
+    aiError,
+  };
 }
 
 // ---------------------------------------------------------------------------
 // Verify
 // ---------------------------------------------------------------------------
 
-/**
- * 验证知识库完整性
- */
 async function verifyKnowledge() {
-  const dir = getKnowledgeDir();
   const indexPath = getIndexPath();
+  const sectionsDir = getSectionsDir();
   const issues = [];
 
-  // 检查 index.json 存在
   if (!fs.existsSync(indexPath)) {
     const msg = 'index.json 不存在';
     console.error(`错误：${msg}`);
     return { valid: false, issues: [msg], exitCode: 1 };
   }
 
-  // 解析 index.json
   let index;
   try {
     const raw = fs.readFileSync(indexPath, 'utf8');
@@ -739,19 +411,15 @@ async function verifyKnowledge() {
     return { valid: false, issues: [msg], exitCode: 1 };
   }
 
-  // 检查 current 文件存在
-  if (!index.current) {
-    issues.push('index.json 缺少 current 字段');
-  } else {
-    const currentPath = path.join(dir, index.current);
-    if (!fs.existsSync(currentPath)) {
-      issues.push(`知识文件不存在: ${index.current}`);
-    }
+  // 检查 sections 目录存在
+  if (!fs.existsSync(sectionsDir)) {
+    issues.push('sections/ 目录不存在');
   }
 
-  // 检查每个 section 的 commit 有效性
+  // 检查每个 section
   if (index.sections) {
     for (const [key, section] of Object.entries(index.sections)) {
+      // commit 有效性
       if (!section.commit) {
         issues.push(`section '${key}' 缺少 commit`);
         continue;
@@ -761,22 +429,11 @@ async function verifyKnowledge() {
       } catch {
         issues.push(`section '${key}' commit ${getShortHash(section.commit)} 不是有效的 git commit`);
       }
-    }
-  }
 
-  // 检查知识文件章节标题与 sections 对应
-  if (index.current && !issues.some((i) => i.includes('知识文件不存在'))) {
-    const knowledgePath = path.join(dir, index.current);
-    if (fs.existsSync(knowledgePath)) {
-      const content = fs.readFileSync(knowledgePath, 'utf8');
-
-      if (index.sections) {
-        for (const key of Object.keys(index.sections)) {
-          const title = SECTION_TITLES[key];
-          if (title && !content.includes(title)) {
-            issues.push(`知识文件缺少章节: ${title} (section: ${key})`);
-          }
-        }
+      // section 文件存在
+      const sectionPath = path.join(sectionsDir, `${key}.md`);
+      if (!fs.existsSync(sectionPath)) {
+        issues.push(`知识文件不存在: sections/${key}.md`);
       }
     }
   }
@@ -786,7 +443,6 @@ async function verifyKnowledge() {
 
   if (valid) {
     console.log('✅ 知识库验证通过');
-    console.log(`  Index: ${index.current}`);
     console.log(`  Base commit: ${getShortHash(index.baseCommit)}`);
     console.log(`  Sections: ${Object.keys(index.sections || {}).join(', ')}`);
   } else {
@@ -803,12 +459,6 @@ async function verifyKnowledge() {
 // Rebuild
 // ---------------------------------------------------------------------------
 
-/**
- * 从零重建知识库
- *
- * @param {Object} [options]
- * @param {string} [options.profile] - 用于 AI 分析的 profile ID
- */
 async function rebuildKnowledge(options = {}) {
   let headCommit;
   try {
@@ -820,153 +470,98 @@ async function rebuildKnowledge(options = {}) {
   }
 
   const dir = getKnowledgeDir();
+  const sectionsDir = getSectionsDir();
 
   // 创建目录
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  if (!fs.existsSync(sectionsDir)) fs.mkdirSync(sectionsDir, { recursive: true });
 
-  // 清理旧文件
   cleanupTempFiles(dir);
 
   const short = getShortHash(headCommit);
   const date = new Date().toISOString().slice(0, 10);
-  const fileName = `${date}-${short}.md`;
 
   // 生成 index.json
   const sections = {};
   for (const [key, def] of Object.entries(DEFAULT_SECTIONS)) {
-    sections[key] = {
-      commit: headCommit,
-      paths: def.paths,
-    };
+    sections[key] = { commit: headCommit, paths: def.paths };
   }
 
-  const index = {
-    version: 1,
-    baseCommit: headCommit,
-    updatedAt: date,
-    current: fileName,
-    previous: null,
-    sections,
-  };
+  const index = { version: 2, baseCommit: headCommit, updatedAt: date, sections };
 
-  // 生成知识文件骨架
-  let knowledgeContent = `# Project Knowledge — ${short}\n\n`;
-  for (const [key, title] of Object.entries(SECTION_TITLES)) {
-    knowledgeContent += `${title}\n\n(待填充)\n\n`;
-  }
-
-  // AI 分析（需要 --profile 提供凭据）
+  // AI 分析
   let aiUpdated = false;
   let aiError = null;
 
   if (options.profile) {
     try {
-      const result = findProfile(options.profile, undefined, { mergeBase: true });
-      if (result.profile) {
-        const baseUrl = result.profile.env?.ANTHROPIC_BASE_URL;
-        const token = result.profile.env?.ANTHROPIC_AUTH_TOKEN;
-        const model = result.profile.env?.ANTHROPIC_MODEL;
+      console.log('使用 AI 分析生成知识章节...');
 
-        if (baseUrl) {
-          console.log('使用 AI 分析生成知识章节...');
+      for (const [key, title] of Object.entries(SECTION_TITLES)) {
+        const sectionDef = DEFAULT_SECTIONS[key];
+        const paths = sectionDef.paths.join(', ');
 
-          for (const [key, title] of Object.entries(SECTION_TITLES)) {
-            const sectionDef = DEFAULT_SECTIONS[key];
-            const paths = sectionDef.paths.join(' ');
+        const prompt = `你是项目知识库维护者。请分析以下路径的源码，生成知识库章节。
 
-            // 获取该 section 下的文件列表
-            let fileList = '';
-            try {
-              fileList = execSync(
-                `git ls-tree -r HEAD --name-only -- ${paths}`,
-                { encoding: 'utf8' }
-              ).trim();
-            } catch {
-              fileList = '';
-            }
+章节标题：${title}
+源码路径：${paths}
 
-            // 读取源码内容
-            let sourceCode = '';
-            if (fileList) {
-              const files = fileList.split('\n').filter(Boolean);
-              for (const f of files) {
-                try {
-                  const content = fs.readFileSync(f, 'utf8');
-                  sourceCode += `// === ${f} ===\n${content}\n\n`;
-                } catch {
-                  // 跳过无法读取的文件
-                }
-              }
-            }
+要求：
+1. 读取路径下的所有源码文件，分析模块职责、核心函数、导出接口、模块间依赖
+2. 用中文书写
+3. 以 ${title} 开头
+4. 只输出章节内容，不要任何额外解释或前言`;
 
-            if (sourceCode) {
-              console.log(`  分析 ${key}...`);
-              const aiContent = await analyzeSourceWithAI(baseUrl, token, title, sourceCode, model);
-              // 替换骨架中的占位内容
-              const sectionKey = title.replace(/^## /, '').split(' (')[0];
-              knowledgeContent = replaceSection(knowledgeContent, sectionKey, aiContent);
-            }
-          }
-
-          aiUpdated = true;
-          console.log('AI 分析完成');
-        } else {
-          aiError = `profile '${options.profile}' 缺少 ANTHROPIC_BASE_URL`;
-          console.error(`警告：${aiError}，跳过 AI 分析`);
-        }
-      } else {
-        aiError = `未找到 profile '${options.profile}'`;
-        console.error(`警告：${aiError}，跳过 AI 分析`);
+        console.log(`  分析 ${key}...`);
+        const content = await callClaudeCode(prompt, options.profile);
+        atomicWrite(path.join(sectionsDir, `${key}.md`), content);
       }
+
+      aiUpdated = true;
+      console.log('AI 分析完成');
     } catch (err) {
       aiError = err.message;
       console.error(`警告：AI 分析失败 - ${err.message}`);
     }
   }
 
-  // 原子写入
-  atomicWrite(path.join(dir, fileName), knowledgeContent);
+  // 生成骨架文件（如果没有 AI 或 AI 失败）
+  for (const [key, title] of Object.entries(SECTION_TITLES)) {
+    const sectionPath = path.join(sectionsDir, `${key}.md`);
+    if (!fs.existsSync(sectionPath)) {
+      atomicWrite(sectionPath, `${title}\n\n(待填充)\n`);
+    }
+  }
+
   saveIndex(index);
 
   console.log(`知识库已重建:`);
   console.log(`  Index: ${KNOWLEDGE_DIR}/${INDEX_FILE}`);
-  console.log(`  Knowledge: ${KNOWLEDGE_DIR}/${fileName}`);
-  console.log(`  Sections: ${Object.keys(sections).join(', ')}`);
+  console.log(`  Sections: ${KNOWLEDGE_DIR}/${SECTIONS_DIR}/`);
+  console.log(`  Keys: ${Object.keys(sections).join(', ')}`);
   console.log(`  Commit: ${short}`);
   if (aiUpdated) {
     console.log(`  AI: 已填充所有章节`);
   } else {
     console.log();
-    console.log('请填充知识文件中的章节内容。');
+    console.log('请填充各章节文件内容。');
   }
 
-  return { headCommit, fileName, aiUpdated, aiError };
+  return { headCommit, aiUpdated, aiError };
 }
 
 // ---------------------------------------------------------------------------
 // Command Router
 // ---------------------------------------------------------------------------
 
-/**
- * knowledge 命令入口
- *
- * @param {string} subcommand - status | update | verify | rebuild
- * @param {Object} options
- */
 function knowledgeCommand(subcommand, options) {
   options = options || {};
 
   switch (subcommand) {
-    case 'status':
-      return statusKnowledge();
-    case 'update':
-      return updateKnowledge(options);
-    case 'verify':
-      return verifyKnowledge();
-    case 'rebuild':
-      return rebuildKnowledge(options);
+    case 'status': return statusKnowledge();
+    case 'update': return updateKnowledge(options);
+    case 'verify': return verifyKnowledge();
+    case 'rebuild': return rebuildKnowledge(options);
     default:
       console.error(`错误：未知子命令 '${subcommand}'`);
       console.log('可用子命令: status, update, verify, rebuild');
@@ -982,6 +577,4 @@ module.exports = {
   rebuildKnowledge,
   classifyChange,
   parseNumstat,
-  extractSection,
-  replaceSection,
 };

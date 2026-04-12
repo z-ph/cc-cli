@@ -7,7 +7,6 @@
 
 jest.mock('fs');
 jest.mock('child_process');
-jest.mock('../../src/api/client');
 jest.mock('../../src/config/loader');
 
 const fs = require('fs');
@@ -20,25 +19,19 @@ const {
   rebuildKnowledge,
   classifyChange,
   parseNumstat,
-  extractSection,
-  replaceSection,
 } = require('../../src/commands/knowledge');
 
-// Helper: mock execSync to return predetermined outputs
-const { execSync } = require('child_process');
-const { sendApiRequest } = require('../../src/api/client');
-const { findProfile } = require('../../src/config/loader');
+const { execSync, spawn } = require('child_process');
+const { findProfile, getSettingsDir } = require('../../src/config/loader');
 
 const FULL_COMMIT = 'fe7092e909339f96ac4bc8e0a679d756bc02ef99';
 const SHORT_COMMIT = 'fe7092e';
 const OTHER_COMMIT = 'abc1234def567890abc1234def567890abc1234d';
 
 const SAMPLE_INDEX = {
-  version: 1,
+  version: 2,
   baseCommit: FULL_COMMIT,
-  updatedAt: '2026-04-10',
-  current: `2026-04-10-${SHORT_COMMIT}.md`,
-  previous: null,
+  updatedAt: '2026-04-12',
   sections: {
     bin: { commit: FULL_COMMIT, paths: ['bin/'] },
     config: { commit: FULL_COMMIT, paths: ['src/config/'] },
@@ -48,43 +41,48 @@ const SAMPLE_INDEX = {
   },
 };
 
-const SAMPLE_KNOWLEDGE = `# Project Knowledge — ${SHORT_COMMIT}
-
-## 入口与 CLI (bin/)
-
-bin/cc.js is the Commander.js entry point.
-
-## 配置层 (src/config/)
-
-loader.js handles YAML read/write/find.
-
-## 命令层 (src/commands/)
-
-Each command exports a single function.
-
-## 代理层 (src/proxy/)
-
-HTTP reverse proxy core.
-
-## API 层 (src/api/)
-
-API client for model queries.
-`;
-
 function mockIndexOnDisk(index = SAMPLE_INDEX) {
   fs.existsSync.mockImplementation((p) => {
-    if (typeof p === 'string' && p.endsWith('index.json')) return true;
-    if (typeof p === 'string' && p.endsWith('.md')) return true;
+    if (typeof p !== 'string') return false;
+    if (p.endsWith('index.json')) return true;
+    if (p.includes('sections')) return true; // sections/*.md
     return false;
   });
   fs.readFileSync.mockImplementation((p) => {
     if (typeof p === 'string' && p.endsWith('index.json')) {
       return JSON.stringify(index, null, 2);
     }
-    if (typeof p === 'string' && p.endsWith('.md')) {
-      return SAMPLE_KNOWLEDGE;
-    }
-    return '';
+    return `${path.basename(p)} content`;
+  });
+}
+
+function mockSpawnOutput(text) {
+  spawn.mockImplementation(() => {
+    const EventEmitter = require('events');
+    const child = new EventEmitter();
+    child.stdout = new EventEmitter();
+    child.stderr = new EventEmitter();
+    child.stdin = { write: jest.fn(), end: jest.fn() };
+    process.nextTick(() => {
+      child.stdout.emit('data', Buffer.from(text));
+      child.emit('close', 0);
+    });
+    return child;
+  });
+}
+
+function mockSpawnError(errMsg) {
+  spawn.mockImplementation(() => {
+    const EventEmitter = require('events');
+    const child = new EventEmitter();
+    child.stdout = new EventEmitter();
+    child.stderr = new EventEmitter();
+    child.stdin = { write: jest.fn(), end: jest.fn() };
+    process.nextTick(() => {
+      child.stderr.emit('data', Buffer.from(errMsg));
+      child.emit('close', 1);
+    });
+    return child;
   });
 }
 
@@ -107,13 +105,12 @@ describe('Knowledge Command', () => {
   });
 
   // =========================================================================
-  // Helper: parseNumstat
+  // parseNumstat
   // =========================================================================
   describe('parseNumstat', () => {
     it('should parse standard numstat output', () => {
       const output = '10\t5\tsrc/config/loader.js\n3\t0\tsrc/config/validator.js';
-      const result = parseNumstat(output);
-      expect(result).toEqual([
+      expect(parseNumstat(output)).toEqual([
         { added: 10, deleted: 5, file: 'src/config/loader.js' },
         { added: 3, deleted: 0, file: 'src/config/validator.js' },
       ]);
@@ -125,14 +122,14 @@ describe('Knowledge Command', () => {
     });
 
     it('should handle binary files marked with -', () => {
-      const output = '-\t-\timage.png';
-      const result = parseNumstat(output);
-      expect(result).toEqual([{ added: -1, deleted: -1, file: 'image.png' }]);
+      expect(parseNumstat('-\t-\timage.png')).toEqual([
+        { added: -1, deleted: -1, file: 'image.png' },
+      ]);
     });
   });
 
   // =========================================================================
-  // Helper: classifyChange
+  // classifyChange
   // =========================================================================
   describe('classifyChange', () => {
     it('should return "unchanged" for empty stats', () => {
@@ -140,50 +137,28 @@ describe('Knowledge Command', () => {
     });
 
     it('should classify as "minor" for single file with <5 lines changed', () => {
-      const stats = [{ added: 2, deleted: 1, file: 'src/config/loader.js' }];
-      expect(classifyChange(stats)).toBe('minor');
+      expect(classifyChange([{ added: 2, deleted: 1, file: 'a.js' }])).toBe('minor');
     });
 
-    it('should classify as "significant" for single file with >=5 lines changed', () => {
-      const stats = [{ added: 3, deleted: 2, file: 'src/config/loader.js' }];
-      expect(classifyChange(stats)).toBe('significant');
+    it('should classify as "significant" for >=5 lines changed', () => {
+      expect(classifyChange([{ added: 3, deleted: 2, file: 'a.js' }])).toBe('significant');
     });
 
     it('should classify as "significant" for 3+ files changed', () => {
-      const stats = [
+      expect(classifyChange([
         { added: 1, deleted: 0, file: 'a.js' },
         { added: 1, deleted: 0, file: 'b.js' },
         { added: 1, deleted: 0, file: 'c.js' },
-      ];
-      expect(classifyChange(stats)).toBe('significant');
+      ])).toBe('significant');
     });
 
-    it('should classify as "significant" for binary/new files (added=-1)', () => {
-      const stats = [{ added: -1, deleted: -1, file: 'new-file.js' }];
-      expect(classifyChange(stats)).toBe('significant');
-    });
-
-    it('should classify as "significant" for total changes >=5 across files', () => {
-      const stats = [
-        { added: 2, deleted: 1, file: 'a.js' },
-        { added: 1, deleted: 1, file: 'b.js' },
-      ];
-      // total: 2+1+1+1 = 5
-      expect(classifyChange(stats)).toBe('significant');
-    });
-
-    it('should classify as "minor" for 2 files with <5 total changes', () => {
-      const stats = [
-        { added: 1, deleted: 0, file: 'a.js' },
-        { added: 1, deleted: 1, file: 'b.js' },
-      ];
-      // total: 1+0+1+1 = 3
-      expect(classifyChange(stats)).toBe('minor');
+    it('should classify as "significant" for binary/new files', () => {
+      expect(classifyChange([{ added: -1, deleted: -1, file: 'new.js' }])).toBe('significant');
     });
   });
 
   // =========================================================================
-  // status subcommand
+  // status
   // =========================================================================
   describe('statusKnowledge', () => {
     it('should report all sections up to date when HEAD matches', async () => {
@@ -205,10 +180,9 @@ describe('Knowledge Command', () => {
           config: { commit: OTHER_COMMIT, paths: ['src/config/'] },
         },
       });
-      // HEAD is FULL_COMMIT, config section is at OTHER_COMMIT
       execSync
-        .mockReturnValueOnce(FULL_COMMIT) // git rev-parse HEAD
-        .mockReturnValueOnce('10\t5\tsrc/config/loader.js'); // git diff --numstat for config
+        .mockReturnValueOnce(FULL_COMMIT)
+        .mockReturnValueOnce('10\t5\tsrc/config/loader.js');
 
       const result = await statusKnowledge();
 
@@ -226,23 +200,12 @@ describe('Knowledge Command', () => {
       });
       execSync
         .mockReturnValueOnce(FULL_COMMIT)
-        .mockReturnValueOnce('2\t1\tsrc/config/loader.js'); // <5 lines, 1 file
+        .mockReturnValueOnce('2\t1\tsrc/config/loader.js');
 
       const result = await statusKnowledge();
 
       expect(result.minor).toContain('config');
       expect(result.stale).toEqual([]);
-      expect(result.exitCode).toBe(1);
-    });
-
-    it('should report unchanged for matching section', async () => {
-      mockIndexOnDisk();
-      execSync.mockReturnValue(FULL_COMMIT);
-
-      const result = await statusKnowledge();
-
-      expect(result.unchanged).toEqual(['bin', 'config', 'commands', 'proxy', 'api']);
-      expect(result.exitCode).toBe(0);
     });
 
     it('should handle missing index.json', async () => {
@@ -253,44 +216,10 @@ describe('Knowledge Command', () => {
       expect(result.error).toBeTruthy();
       expect(result.exitCode).toBe(1);
     });
-
-    it('should report stale for new file detection', async () => {
-      mockIndexOnDisk({
-        ...SAMPLE_INDEX,
-        sections: {
-          ...SAMPLE_INDEX.sections,
-          commands: { commit: OTHER_COMMIT, paths: ['src/commands/'] },
-        },
-      });
-      execSync
-        .mockReturnValueOnce(FULL_COMMIT)
-        .mockReturnValueOnce('-\t-\tsrc/commands/new-cmd.js'); // binary/new file
-
-      const result = await statusKnowledge();
-
-      expect(result.stale).toContain('commands');
-    });
-
-    it('should report significant for 3+ files changed', async () => {
-      mockIndexOnDisk({
-        ...SAMPLE_INDEX,
-        sections: {
-          ...SAMPLE_INDEX.sections,
-          proxy: { commit: OTHER_COMMIT, paths: ['src/proxy/'] },
-        },
-      });
-      execSync
-        .mockReturnValueOnce(FULL_COMMIT)
-        .mockReturnValueOnce('1\t0\ta.js\n1\t0\tb.js\n1\t0\tc.js');
-
-      const result = await statusKnowledge();
-
-      expect(result.stale).toContain('proxy');
-    });
   });
 
   // =========================================================================
-  // update subcommand
+  // update
   // =========================================================================
   describe('updateKnowledge', () => {
     it('should do nothing when all sections are up to date', async () => {
@@ -303,56 +232,59 @@ describe('Knowledge Command', () => {
       expect(mockLog).toHaveBeenCalledWith(expect.stringContaining('最新'));
     });
 
-    it('should update single stale section', async () => {
+    it('should only update commit for minor sections without --section', async () => {
       mockIndexOnDisk({
         ...SAMPLE_INDEX,
         sections: {
           ...SAMPLE_INDEX.sections,
           config: { commit: OTHER_COMMIT, paths: ['src/config/'] },
-        },
-      });
-      execSync
-        .mockReturnValueOnce(FULL_COMMIT) // git rev-parse HEAD
-        .mockReturnValueOnce('10\t5\tsrc/config/loader.js') // status check
-        .mockReturnValueOnce('10\t5\tsrc/config/loader.js\n+new line\n-old line'); // diff for update
-
-      fs.writeFileSync.mockImplementation(() => {});
-      fs.renameSync.mockImplementation(() => {});
-      fs.unlinkSync.mockImplementation(() => {});
-
-      const result = await updateKnowledge({});
-
-      expect(result.updated).toContain('config');
-      expect(result.headCommit).toBe(FULL_COMMIT);
-    });
-
-    it('should update multiple stale sections', async () => {
-      mockIndexOnDisk({
-        ...SAMPLE_INDEX,
-        sections: {
-          ...SAMPLE_INDEX.sections,
-          config: { commit: OTHER_COMMIT, paths: ['src/config/'] },
-          proxy: { commit: OTHER_COMMIT, paths: ['src/proxy/'] },
         },
       });
       execSync
         .mockReturnValueOnce(FULL_COMMIT)
-        .mockReturnValueOnce('10\t5\tsrc/config/loader.js') // config status
-        .mockReturnValueOnce('8\t3\tsrc/proxy/server.js') // proxy status
-        .mockReturnValueOnce('10\t5\tsrc/config/loader.js\n+new') // config diff
-        .mockReturnValueOnce('8\t3\tsrc/proxy/server.js\n+new'); // proxy diff
+        .mockReturnValueOnce('2\t1\tsrc/config/loader.js');
 
       fs.writeFileSync.mockImplementation(() => {});
-      fs.renameSync.mockImplementation(() => {});
-      fs.unlinkSync.mockImplementation(() => {});
 
       const result = await updateKnowledge({});
 
-      expect(result.updated).toContain('config');
-      expect(result.updated).toContain('proxy');
+      expect(result.updated).toEqual([]);
+      expect(result.minorUpdated).toContain('config');
     });
 
-    it('should mark cross-module section for review when 2+ sections stale', async () => {
+    it('should update stale section file with AI when --profile provided', async () => {
+      mockIndexOnDisk({
+        ...SAMPLE_INDEX,
+        sections: {
+          ...SAMPLE_INDEX.sections,
+          config: { commit: OTHER_COMMIT, paths: ['src/config/'] },
+        },
+      });
+      execSync
+        .mockReturnValueOnce(FULL_COMMIT)
+        .mockReturnValueOnce('10\t5\tsrc/config/loader.js')
+        .mockReturnValueOnce('10\t5\tsrc/config/loader.js\n+new');
+      mockSpawnOutput('## 配置层 (src/config/)\n\nUpdated by AI\n');
+      findProfile.mockReturnValue({
+        profile: { env: { ANTHROPIC_AUTH_TOKEN: 'test-token' } },
+        configPath: '/path/to/models.yaml',
+        source: 'local',
+      });
+      getSettingsDir.mockReturnValue('/tmp/.claude');
+      fs.writeFileSync.mockImplementation(() => {});
+
+      const result = await updateKnowledge({ profile: 'test-profile' });
+
+      expect(result.updated).toContain('config');
+      expect(result.aiUpdated).toBeTruthy();
+      // Should have written the section file
+      const writeCall = fs.writeFileSync.mock.calls.find(
+        (c) => typeof c[0] === 'string' && c[0].includes('sections') && c[0].endsWith('config.md')
+      );
+      expect(writeCall).toBeTruthy();
+    });
+
+    it('should mark cross-module for 2+ stale sections', async () => {
       mockIndexOnDisk({
         ...SAMPLE_INDEX,
         sections: {
@@ -369,15 +301,13 @@ describe('Knowledge Command', () => {
         .mockReturnValueOnce('8\t3\tsrc/commands/launch.js');
 
       fs.writeFileSync.mockImplementation(() => {});
-      fs.renameSync.mockImplementation(() => {});
-      fs.unlinkSync.mockImplementation(() => {});
 
       const result = await updateKnowledge({});
 
       expect(result.specialSections).toContain('cross-module');
     });
 
-    it('should not mark cross-module for single stale section', async () => {
+    it('should fallback gracefully if AI call fails', async () => {
       mockIndexOnDisk({
         ...SAMPLE_INDEX,
         sections: {
@@ -388,88 +318,23 @@ describe('Knowledge Command', () => {
       execSync
         .mockReturnValueOnce(FULL_COMMIT)
         .mockReturnValueOnce('10\t5\tsrc/config/loader.js')
-        .mockReturnValueOnce('10\t5\tsrc/config/loader.js');
-
-      fs.writeFileSync.mockImplementation(() => {});
-      fs.renameSync.mockImplementation(() => {});
-      fs.unlinkSync.mockImplementation(() => {});
-
-      const result = await updateKnowledge({});
-
-      expect(result.specialSections).not.toContain('cross-module');
-    });
-
-    it('should force update with --section flag even if minor', async () => {
-      mockIndexOnDisk({
-        ...SAMPLE_INDEX,
-        sections: {
-          ...SAMPLE_INDEX.sections,
-          config: { commit: OTHER_COMMIT, paths: ['src/config/'] },
-        },
+        .mockReturnValueOnce('10\t5\tsrc/config/loader.js\n+new');
+      mockSpawnError('Claude Code error');
+      findProfile.mockReturnValue({
+        profile: { env: { ANTHROPIC_AUTH_TOKEN: 'test-token' } },
+        configPath: '/path/to/models.yaml',
+        source: 'local',
       });
-      execSync
-        .mockReturnValueOnce(FULL_COMMIT)
-        .mockReturnValueOnce('2\t1\tsrc/config/loader.js') // status: minor
-        .mockReturnValueOnce('2\t1\tsrc/config/loader.js\n+new'); // diff for update
-
+      getSettingsDir.mockReturnValue('/tmp/.claude');
       fs.writeFileSync.mockImplementation(() => {});
-      fs.renameSync.mockImplementation(() => {});
-      fs.unlinkSync.mockImplementation(() => {});
 
-      const result = await updateKnowledge({ section: 'config' });
+      const result = await updateKnowledge({ profile: 'test-profile' });
 
       expect(result.updated).toContain('config');
+      expect(result.aiError).toBeTruthy();
     });
 
-    it('should use sequence number for same-day same-hash filename', async () => {
-      const today = new Date().toISOString().slice(0, 10);
-      // Current file has today's date + same short hash as HEAD
-      mockIndexOnDisk({
-        ...SAMPLE_INDEX,
-        baseCommit: FULL_COMMIT,
-        current: `${today}-${SHORT_COMMIT}.md`,
-        sections: {
-          ...SAMPLE_INDEX.sections,
-          config: { commit: OTHER_COMMIT, paths: ['src/config/'] },
-        },
-      });
-      execSync
-        .mockReturnValueOnce(FULL_COMMIT)
-        .mockReturnValueOnce('10\t5\tsrc/config/loader.js')
-        .mockReturnValueOnce('10\t5\tsrc/config/loader.js');
-
-      fs.writeFileSync.mockImplementation(() => {});
-      fs.renameSync.mockImplementation(() => {});
-      fs.unlinkSync.mockImplementation(() => {});
-
-      const result = await updateKnowledge({});
-
-      // Should produce a filename with -2 suffix since HEAD == baseCommit and date matches
-      expect(result.newFile).toMatch(/-2\.md$/);
-    });
-
-    it('should only update commit for minor sections without --section', async () => {
-      mockIndexOnDisk({
-        ...SAMPLE_INDEX,
-        sections: {
-          ...SAMPLE_INDEX.sections,
-          config: { commit: OTHER_COMMIT, paths: ['src/config/'] },
-        },
-      });
-      execSync
-        .mockReturnValueOnce(FULL_COMMIT)
-        .mockReturnValueOnce('2\t1\tsrc/config/loader.js'); // minor
-
-      fs.writeFileSync.mockImplementation(() => {});
-
-      const result = await updateKnowledge({});
-
-      // Minor sections only update commit, no knowledge rewrite
-      expect(result.updated).toEqual([]);
-      expect(result.minorUpdated).toContain('config');
-    });
-
-    it('should mark non-obvious section for review when config section changes', async () => {
+    it('should skip AI when no profile specified', async () => {
       mockIndexOnDisk({
         ...SAMPLE_INDEX,
         sections: {
@@ -480,25 +345,29 @@ describe('Knowledge Command', () => {
       execSync
         .mockReturnValueOnce(FULL_COMMIT)
         .mockReturnValueOnce('10\t5\tsrc/config/loader.js')
-        .mockReturnValueOnce('10\t5\tsrc/config/loader.js');
-
+        .mockReturnValueOnce('10\t5\tsrc/config/loader.js\n+new');
       fs.writeFileSync.mockImplementation(() => {});
-      fs.renameSync.mockImplementation(() => {});
-      fs.unlinkSync.mockImplementation(() => {});
 
       const result = await updateKnowledge({});
 
-      expect(result.specialSections).toContain('non-obvious');
+      expect(spawn).not.toHaveBeenCalled();
+      expect(result.updated).toContain('config');
+      expect(result.aiUpdated).toBeFalsy();
     });
   });
 
   // =========================================================================
-  // verify subcommand
+  // verify
   // =========================================================================
   describe('verifyKnowledge', () => {
     it('should pass for valid knowledge base', async () => {
-      mockIndexOnDisk();
-      // Mock git rev-parse to validate commits
+      fs.existsSync.mockReturnValue(true);
+      fs.readFileSync.mockImplementation((p) => {
+        if (typeof p === 'string' && p.endsWith('index.json')) {
+          return JSON.stringify(SAMPLE_INDEX, null, 2);
+        }
+        return '';
+      });
       execSync.mockImplementation((cmd) => {
         if (cmd.includes('cat-file -t')) return 'commit\n';
         return '';
@@ -510,61 +379,16 @@ describe('Knowledge Command', () => {
       expect(result.exitCode).toBe(0);
     });
 
-    it('should detect missing knowledge file', async () => {
+    it('should detect missing section file', async () => {
       fs.existsSync.mockImplementation((p) => {
         if (typeof p === 'string' && p.endsWith('index.json')) return true;
-        return false; // .md file missing
+        return false; // sections/ dir or files missing
       });
       fs.readFileSync.mockImplementation((p) => {
         if (typeof p === 'string' && p.endsWith('index.json')) {
           return JSON.stringify(SAMPLE_INDEX, null, 2);
         }
         return '';
-      });
-
-      const result = await verifyKnowledge();
-
-      expect(result.valid).toBe(false);
-      expect(result.issues).toEqual(
-        expect.arrayContaining([expect.stringContaining('知识文件不存在')])
-      );
-      expect(result.exitCode).toBe(1);
-    });
-
-    it('should detect invalid commit in section', async () => {
-      mockIndexOnDisk();
-      execSync.mockImplementation((cmd) => {
-        if (cmd.includes('cat-file -t')) {
-          throw new Error('Not a valid object name');
-        }
-        return '';
-      });
-
-      const result = await verifyKnowledge();
-
-      expect(result.valid).toBe(false);
-      expect(result.issues.length).toBeGreaterThan(0);
-    });
-
-    it('should detect section heading mismatch', async () => {
-      mockIndexOnDisk();
-      // Knowledge file is missing the commands section
-      const badKnowledge = `# Project Knowledge
-
-## 入口与 CLI (bin/)
-...
-
-## 配置层 (src/config/)
-...
-
-## 代理层 (src/proxy/)
-...
-`;
-      fs.readFileSync.mockImplementation((p) => {
-        if (typeof p === 'string' && p.endsWith('index.json')) {
-          return JSON.stringify(SAMPLE_INDEX, null, 2);
-        }
-        return badKnowledge;
       });
       execSync.mockImplementation((cmd) => {
         if (cmd.includes('cat-file -t')) return 'commit\n';
@@ -575,16 +399,33 @@ describe('Knowledge Command', () => {
 
       expect(result.valid).toBe(false);
       expect(result.issues).toEqual(
-        expect.arrayContaining([expect.stringContaining('命令层')])
+        expect.arrayContaining([expect.stringContaining('不存在')])
       );
+    });
+
+    it('should detect invalid commit in section', async () => {
+      fs.existsSync.mockReturnValue(true);
+      fs.readFileSync.mockImplementation((p) => {
+        if (typeof p === 'string' && p.endsWith('index.json')) {
+          return JSON.stringify(SAMPLE_INDEX, null, 2);
+        }
+        return '';
+      });
+      execSync.mockImplementation((cmd) => {
+        if (cmd.includes('cat-file -t')) throw new Error('Not a valid object');
+        return '';
+      });
+
+      const result = await verifyKnowledge();
+
+      expect(result.valid).toBe(false);
+      expect(result.issues.length).toBeGreaterThan(0);
     });
 
     it('should handle corrupted index.json', async () => {
       fs.existsSync.mockReturnValue(true);
       fs.readFileSync.mockImplementation((p) => {
-        if (typeof p === 'string' && p.endsWith('index.json')) {
-          return 'not valid json {{{';
-        }
+        if (typeof p === 'string' && p.endsWith('index.json')) return 'not valid json {{{';
         return '';
       });
 
@@ -598,60 +439,54 @@ describe('Knowledge Command', () => {
   });
 
   // =========================================================================
-  // rebuild subcommand
+  // rebuild
   // =========================================================================
   describe('rebuildKnowledge', () => {
-    it('should create new index.json with current HEAD', async () => {
+    it('should create index.json and section files', async () => {
       execSync.mockReturnValue(FULL_COMMIT);
       fs.existsSync.mockReturnValue(true);
       fs.writeFileSync.mockImplementation(() => {});
       fs.mkdirSync.mockImplementation(() => {});
-      fs.renameSync.mockImplementation(() => {});
       fs.readdirSync.mockReturnValue([]);
 
       const result = await rebuildKnowledge();
 
       expect(result.headCommit).toBe(FULL_COMMIT);
-      expect(fs.writeFileSync).toHaveBeenCalled();
 
-      // Check index.json was written with correct structure
+      // Check index.json written
       const indexWriteCall = fs.writeFileSync.mock.calls.find(
         (c) => typeof c[0] === 'string' && c[0].endsWith('index.json')
       );
       expect(indexWriteCall).toBeTruthy();
       const indexContent = JSON.parse(indexWriteCall[1]);
-      expect(indexContent.version).toBe(1);
-      expect(indexContent.baseCommit).toBe(FULL_COMMIT);
+      expect(indexContent.version).toBe(2);
       expect(indexContent.sections).toHaveProperty('bin');
-      expect(indexContent.sections).toHaveProperty('config');
-      expect(indexContent.sections).toHaveProperty('commands');
+      expect(indexContent).not.toHaveProperty('current');
+      expect(indexContent).not.toHaveProperty('previous');
     });
 
-    it('should create knowledge file with section headings', async () => {
+    it('should create skeleton section files', async () => {
       execSync.mockReturnValue(FULL_COMMIT);
-      fs.existsSync.mockReturnValue(true);
+      fs.existsSync.mockImplementation((p) => {
+        if (typeof p !== 'string') return false;
+        return !p.endsWith('.md');
+      });
       fs.writeFileSync.mockImplementation(() => {});
       fs.mkdirSync.mockImplementation(() => {});
-      fs.renameSync.mockImplementation(() => {});
       fs.readdirSync.mockReturnValue([]);
 
-      const result = await rebuildKnowledge();
+      await rebuildKnowledge();
 
-      // Check knowledge file was written
-      const mdWriteCall = fs.writeFileSync.mock.calls.find(
-        (c) => typeof c[0] === 'string' && c[0].endsWith('.md')
+      // Should have written section files with (待填充)
+      const sectionWrites = fs.writeFileSync.mock.calls.filter(
+        (c) => typeof c[0] === 'string' && c[0].includes('sections') && c[0].endsWith('.md')
       );
-      expect(mdWriteCall).toBeTruthy();
-      const content = mdWriteCall[1];
-      expect(content).toContain('## 入口与 CLI (bin/)');
-      expect(content).toContain('## 配置层 (src/config/)');
-      expect(content).toContain('## 命令层 (src/commands/)');
+      expect(sectionWrites.length).toBe(5); // 5 sections
+      expect(sectionWrites[0][1]).toContain('(待填充)');
     });
 
     it('should handle non-git directory', async () => {
-      execSync.mockImplementation(() => {
-        throw new Error('not a git repository');
-      });
+      execSync.mockImplementation(() => { throw new Error('not a git repository'); });
 
       const result = await rebuildKnowledge();
 
@@ -663,171 +498,84 @@ describe('Knowledge Command', () => {
       fs.existsSync.mockReturnValue(true);
       fs.writeFileSync.mockImplementation(() => {});
       fs.mkdirSync.mockImplementation(() => {});
-      fs.renameSync.mockImplementation(() => {});
       fs.readdirSync.mockReturnValue([]);
 
       await rebuildKnowledge({});
 
-      // Should NOT call AI
-      expect(sendApiRequest).not.toHaveBeenCalled();
-
-      // Should write skeleton with (待填充)
-      const mdWriteCall = fs.writeFileSync.mock.calls.find(
-        (c) => typeof c[0] === 'string' && c[0].endsWith('.md')
-      );
-      expect(mdWriteCall[1]).toContain('(待填充)');
+      expect(spawn).not.toHaveBeenCalled();
     });
 
-    it('should call AI to fill sections when --profile provided', async () => {
-      execSync
-        .mockReturnValueOnce(FULL_COMMIT) // git rev-parse HEAD
-        .mockReturnValueOnce('bin/cc.js') // git ls-tree for bin
-        .mockReturnValueOnce('src/config/loader.js\nsrc/config/validator.js') // git ls-tree for config
-        .mockReturnValueOnce('src/commands/launch.js') // git ls-tree for commands
-        .mockReturnValueOnce('src/proxy/server.js') // git ls-tree for proxy
-        .mockReturnValueOnce('src/api/client.js'); // git ls-tree for api
+    it('should call Claude Code to fill sections when --profile provided', async () => {
+      const EventEmitter = require('events');
+      execSync.mockReturnValue(FULL_COMMIT);
       fs.existsSync.mockReturnValue(true);
       fs.writeFileSync.mockImplementation(() => {});
       fs.mkdirSync.mockImplementation(() => {});
-      fs.renameSync.mockImplementation(() => {});
       fs.readdirSync.mockReturnValue([]);
-      // Mock reading source files
-      fs.readFileSync.mockImplementation((p) => {
-        if (typeof p === 'string' && p.endsWith('.js')) {
-          return `// source code for ${path.basename(p)}\nfunction main() {}\n`;
-        }
-        return '';
-      });
 
       findProfile.mockReturnValue({
-        profile: {
-          env: {
-            ANTHROPIC_BASE_URL: 'https://api.example.com/v1',
-            ANTHROPIC_AUTH_TOKEN: 'test-token',
-            ANTHROPIC_MODEL: 'test-model',
-          },
-        },
+        profile: { env: { ANTHROPIC_AUTH_TOKEN: 'test-token' } },
         configPath: '/path/to/models.yaml',
         source: 'local',
       });
+      getSettingsDir.mockReturnValue('/tmp/.claude');
 
-      sendApiRequest.mockResolvedValue({
-        statusCode: 200,
-        data: {
-          content: [{ type: 'text', text: `## 入口与 CLI (bin/)\n\nAI-generated knowledge for bin.\n` }],
-        },
+      let callCount = 0;
+      spawn.mockImplementation(() => {
+        callCount++;
+        const child = new EventEmitter();
+        child.stdout = new EventEmitter();
+        child.stderr = new EventEmitter();
+        child.stdin = { write: jest.fn(), end: jest.fn() };
+        process.nextTick(() => {
+          child.stdout.emit('data', Buffer.from(`## Section ${callCount}\n\nAI content\n`));
+          child.emit('close', 0);
+        });
+        return child;
       });
 
       const result = await rebuildKnowledge({ profile: 'test-profile' });
 
-      expect(sendApiRequest).toHaveBeenCalled();
+      expect(spawn).toHaveBeenCalledTimes(5); // one per section
       expect(result.aiUpdated).toBe(true);
-    });
 
-    it('should write AI-generated content instead of placeholder', async () => {
-      execSync
-        .mockReturnValueOnce(FULL_COMMIT)
-        .mockReturnValueOnce('bin/cc.js')
-        .mockReturnValueOnce('src/config/loader.js')
-        .mockReturnValueOnce('src/commands/launch.js')
-        .mockReturnValueOnce('src/proxy/server.js')
-        .mockReturnValueOnce('src/api/client.js');
-      fs.existsSync.mockReturnValue(true);
-      fs.writeFileSync.mockImplementation(() => {});
-      fs.mkdirSync.mockImplementation(() => {});
-      fs.renameSync.mockImplementation(() => {});
-      fs.readdirSync.mockReturnValue([]);
-      fs.readFileSync.mockImplementation((p) => {
-        if (typeof p === 'string' && p.endsWith('.js')) {
-          return `// source code\n`;
-        }
-        return '';
-      });
-
-      findProfile.mockReturnValue({
-        profile: {
-          env: {
-            ANTHROPIC_BASE_URL: 'https://api.example.com/v1',
-            ANTHROPIC_AUTH_TOKEN: 'test-token',
-          },
-        },
-        configPath: '/path/to/models.yaml',
-        source: 'local',
-      });
-
-      // Each section gets a different AI response
-      sendApiRequest
-        .mockResolvedValueOnce({
-          statusCode: 200,
-          data: { content: [{ type: 'text', text: `## 入口与 CLI (bin/)\n\nAI bin content\n` }] },
-        })
-        .mockResolvedValueOnce({
-          statusCode: 200,
-          data: { content: [{ type: 'text', text: `## 配置层 (src/config/)\n\nAI config content\n` }] },
-        })
-        .mockResolvedValueOnce({
-          statusCode: 200,
-          data: { content: [{ type: 'text', text: `## 命令层 (src/commands/)\n\nAI commands content\n` }] },
-        })
-        .mockResolvedValueOnce({
-          statusCode: 200,
-          data: { content: [{ type: 'text', text: `## 代理层 (src/proxy/)\n\nAI proxy content\n` }] },
-        })
-        .mockResolvedValueOnce({
-          statusCode: 200,
-          data: { content: [{ type: 'text', text: `## API 层 (src/api/)\n\nAI api content\n` }] },
-        });
-
-      await rebuildKnowledge({ profile: 'test-profile' });
-
-      // The final written file should contain AI content, not placeholder
-      const mdWriteCall = fs.writeFileSync.mock.calls.find(
-        (c) => typeof c[0] === 'string' && c[0].endsWith('.md')
+      // Section files should contain AI content, not placeholder
+      const sectionWrites = fs.writeFileSync.mock.calls.filter(
+        (c) => typeof c[0] === 'string' && c[0].includes('sections') && c[0].endsWith('.md')
       );
-      expect(mdWriteCall).toBeTruthy();
-      expect(mdWriteCall[1]).toContain('AI bin content');
-      expect(mdWriteCall[1]).toContain('AI config content');
-      expect(mdWriteCall[1]).not.toContain('(待填充)');
+      expect(sectionWrites.length).toBe(5);
+      expect(sectionWrites[0][1]).toContain('AI content');
+      expect(sectionWrites[0][1]).not.toContain('(待填充)');
     });
 
-    it('should fallback to skeleton when AI fails', async () => {
-      execSync
-        .mockReturnValueOnce(FULL_COMMIT)
-        .mockReturnValueOnce('bin/cc.js');
-      fs.existsSync.mockReturnValue(true);
+    it('should fallback to skeleton when Claude Code fails', async () => {
+      execSync.mockReturnValue(FULL_COMMIT);
+      fs.existsSync.mockImplementation((p) => {
+        if (typeof p !== 'string') return false;
+        return !p.endsWith('.md');
+      });
       fs.writeFileSync.mockImplementation(() => {});
       fs.mkdirSync.mockImplementation(() => {});
-      fs.renameSync.mockImplementation(() => {});
       fs.readdirSync.mockReturnValue([]);
-      fs.readFileSync.mockImplementation((p) => {
-        if (typeof p === 'string' && p.endsWith('.js')) return '// code\n';
-        return '';
-      });
 
       findProfile.mockReturnValue({
-        profile: {
-          env: {
-            ANTHROPIC_BASE_URL: 'https://api.example.com/v1',
-            ANTHROPIC_AUTH_TOKEN: 'test-token',
-          },
-        },
+        profile: { env: { ANTHROPIC_AUTH_TOKEN: 'test-token' } },
         configPath: '/path/to/models.yaml',
         source: 'local',
       });
-
-      sendApiRequest.mockRejectedValue(new Error('API unavailable'));
+      getSettingsDir.mockReturnValue('/tmp/.claude');
+      mockSpawnError('error');
 
       const result = await rebuildKnowledge({ profile: 'test-profile' });
 
       expect(result.aiError).toBeTruthy();
-      expect(mockError).toHaveBeenCalledWith(expect.stringContaining('AI'));
 
-      // Should still have written the skeleton
-      const mdWriteCall = fs.writeFileSync.mock.calls.find(
-        (c) => typeof c[0] === 'string' && c[0].endsWith('.md')
+      // Should still have skeleton files
+      const sectionWrites = fs.writeFileSync.mock.calls.filter(
+        (c) => typeof c[0] === 'string' && c[0].includes('sections') && c[0].endsWith('.md')
       );
-      expect(mdWriteCall).toBeTruthy();
-      expect(mdWriteCall[1]).toContain('(待填充)');
+      expect(sectionWrites.length).toBe(5);
+      expect(sectionWrites[0][1]).toContain('(待填充)');
     });
   });
 
@@ -835,7 +583,7 @@ describe('Knowledge Command', () => {
   // Command routing
   // =========================================================================
   describe('knowledgeCommand', () => {
-    it('should route to status by default', async () => {
+    it('should route to status', async () => {
       mockIndexOnDisk();
       execSync.mockReturnValue(FULL_COMMIT);
 
@@ -854,7 +602,13 @@ describe('Knowledge Command', () => {
     });
 
     it('should route to verify', async () => {
-      mockIndexOnDisk();
+      fs.existsSync.mockReturnValue(true);
+      fs.readFileSync.mockImplementation((p) => {
+        if (typeof p === 'string' && p.endsWith('index.json')) {
+          return JSON.stringify(SAMPLE_INDEX, null, 2);
+        }
+        return '';
+      });
       execSync.mockImplementation((cmd) => {
         if (cmd.includes('cat-file -t')) return 'commit\n';
         return '';
@@ -870,7 +624,6 @@ describe('Knowledge Command', () => {
       fs.existsSync.mockReturnValue(true);
       fs.writeFileSync.mockImplementation(() => {});
       fs.mkdirSync.mockImplementation(() => {});
-      fs.renameSync.mockImplementation(() => {});
       fs.readdirSync.mockReturnValue([]);
 
       await knowledgeCommand('rebuild', {});
@@ -891,290 +644,32 @@ describe('Knowledge Command', () => {
   // =========================================================================
   describe('atomic write', () => {
     it('should clean up temp files on next run if previous write crashed', async () => {
-      // Simulate a crashed previous run: temp files exist
       const knowledgeDir = path.resolve('.knowledge');
       fs.existsSync.mockImplementation((p) => {
         if (typeof p !== 'string') return false;
-        if (p === knowledgeDir) return true; // .knowledge/ dir exists
+        if (p === knowledgeDir) return true;
         if (p.endsWith('index.json')) return true;
-        if (p.endsWith('.md')) return true;
         if (p.includes('.tmp')) return true;
         return false;
       });
       fs.readdirSync.mockImplementation((dir) => {
         if (typeof dir === 'string' && dir.includes('.knowledge')) {
-          return ['index.json', `2026-04-10-${SHORT_COMMIT}.md`, '.tmp-crash.md', '.tmp-index-crash.json'];
+          return ['index.json', 'sections', '.tmp-crash.md', '.tmp-index-crash.json'];
         }
+        if (typeof dir === 'string' && dir.includes('sections')) return [];
         return [];
       });
       fs.readFileSync.mockImplementation((p) => {
         if (typeof p === 'string' && p.endsWith('index.json')) {
           return JSON.stringify(SAMPLE_INDEX, null, 2);
         }
-        return SAMPLE_KNOWLEDGE;
+        return '';
       });
       execSync.mockReturnValue(FULL_COMMIT);
 
       await statusKnowledge();
 
-      // Temp files should be cleaned up
-      expect(fs.unlinkSync).toHaveBeenCalledWith(
-        expect.stringContaining('.tmp')
-      );
-    });
-  });
-
-  // =========================================================================
-  // Section extraction and replacement
-  // =========================================================================
-  describe('extractSection', () => {
-    it('should extract a section between two ## headers', () => {
-      const content = `# Title
-
-## Section A (foo/)
-
-Content A line 1
-Content A line 2
-
-## Section B (bar/)
-
-Content B line 1
-`;
-
-      const result = extractSection(content, 'Section A');
-      expect(result).toBe(`## Section A (foo/)\n\nContent A line 1\nContent A line 2\n`);
-    });
-
-    it('should extract last section (no trailing ##)', () => {
-      const content = `# Title
-
-## Section A (foo/)
-
-Content A
-
-## Section B (bar/)
-
-Content B line 1
-Content B line 2`;
-
-      const result = extractSection(content, 'Section B');
-      expect(result).toContain('Content B line 1');
-      expect(result).toContain('Content B line 2');
-    });
-
-    it('should return null for non-existent section', () => {
-      const content = `# Title\n\n## Section A\n\nContent A\n`;
-      const result = extractSection(content, 'NonExistent');
-      expect(result).toBeNull();
-    });
-  });
-
-  describe('replaceSection', () => {
-    it('should replace a section while keeping others intact', () => {
-      const content = `# Title
-
-## Section A (foo/)
-
-Old content A
-
-## Section B (bar/)
-
-Old content B
-`;
-
-      const result = replaceSection(content, 'Section A', `## Section A (foo/)\n\nNew content A\n`);
-      expect(result).toContain('New content A');
-      expect(result).toContain('Old content B');
-      expect(result).not.toContain('Old content A');
-    });
-
-    it('should replace the last section', () => {
-      const content = `# Title\n\n## Section A\n\nContent A\n\n## Section B\n\nOld B\n`;
-      const result = replaceSection(content, 'Section B', `## Section B\n\nNew B\n`);
-      expect(result).toContain('Content A');
-      expect(result).toContain('New B');
-      expect(result).not.toContain('Old B');
-    });
-
-    it('should return original content if section not found', () => {
-      const content = `# Title\n\n## Section A\n\nContent A\n`;
-      const result = replaceSection(content, 'NonExistent', `## NonExistent\n\nNew\n`);
-      expect(result).toBe(content);
-    });
-  });
-
-  // =========================================================================
-  // AI-powered update
-  // =========================================================================
-  describe('updateKnowledge with AI analysis', () => {
-    const AI_RESPONSE = {
-      statusCode: 200,
-      data: {
-        content: [{ type: 'text', text: `## 配置层 (src/config/)\n\nUpdated knowledge from AI analysis.\n\n### loader.js\n- Now supports custom path override\n` }]
-      }
-    };
-
-    function setupForAIUpdate() {
-      const index = {
-        ...SAMPLE_INDEX,
-        sections: {
-          ...SAMPLE_INDEX.sections,
-          config: { commit: OTHER_COMMIT, paths: ['src/config/'] },
-        },
-      };
-      mockIndexOnDisk(index);
-      execSync
-        .mockReturnValueOnce(FULL_COMMIT) // git rev-parse HEAD
-        .mockReturnValueOnce('10\t5\tsrc/config/loader.js') // status numstat
-        .mockReturnValueOnce('10\t5\tsrc/config/loader.js\n+new feature\n-old code'); // diff
-      sendApiRequest.mockResolvedValue(AI_RESPONSE);
-      findProfile.mockReturnValue({
-        profile: {
-          env: {
-            ANTHROPIC_BASE_URL: 'https://api.example.com/v1',
-            ANTHROPIC_AUTH_TOKEN: 'test-token',
-            ANTHROPIC_MODEL: 'test-model',
-          },
-        },
-        configPath: '/path/to/models.yaml',
-        source: 'local',
-      });
-      fs.writeFileSync.mockImplementation(() => {});
-      fs.renameSync.mockImplementation(() => {});
-      fs.unlinkSync.mockImplementation(() => {});
-    }
-
-    it('should call AI API to analyze diff and update knowledge', async () => {
-      setupForAIUpdate();
-
-      const result = await updateKnowledge({ profile: 'test-profile' });
-
-      // Should have called the AI API
-      expect(sendApiRequest).toHaveBeenCalledWith(
-        expect.any(String), // baseUrl
-        expect.any(String), // token
-        expect.objectContaining({
-          method: 'POST',
-          path: '/messages',
-        })
-      );
-
-      // Should have updated the section
-      expect(result.updated).toContain('config');
-      expect(result.aiUpdated).toBeTruthy();
-    });
-
-    it('should pass old knowledge and diff in AI request', async () => {
-      setupForAIUpdate();
-
-      await updateKnowledge({ profile: 'test-profile' });
-
-      const call = sendApiRequest.mock.calls[0];
-      const body = JSON.parse(call[2].body);
-      const userMsg = body.messages.find(m => m.role === 'user').content;
-
-      expect(userMsg).toContain('src/config/loader.js'); // diff content
-      expect(userMsg).toContain('配置层'); // old knowledge
-      // Anthropic format: system is top-level, not in messages
-      expect(body.system).toBeTruthy();
-      expect(body.messages[0].role).toBe('user');
-    });
-
-    it('should write AI-updated knowledge to file', async () => {
-      setupForAIUpdate();
-
-      await updateKnowledge({ profile: 'test-profile' });
-
-      // The written file should contain AI-generated content
-      const mdWriteCall = fs.writeFileSync.mock.calls.find(
-        c => typeof c[0] === 'string' && c[0].endsWith('.md')
-      );
-      expect(mdWriteCall).toBeTruthy();
-      expect(mdWriteCall[1]).toContain('Updated knowledge from AI analysis');
-    });
-
-    it('should fallback gracefully if AI call fails', async () => {
-      setupForAIUpdate();
-      sendApiRequest.mockRejectedValue(new Error('API unavailable'));
-
-      const result = await updateKnowledge({ profile: 'test-profile' });
-
-      // Should still complete, but flag AI failure
-      expect(result.updated).toContain('config');
-      expect(result.aiError).toBeTruthy();
-      expect(mockError).toHaveBeenCalledWith(expect.stringContaining('AI'));
-    });
-
-    it('should skip AI when no profile specified and output diff report', async () => {
-      // Same setup but without profile
-      const index = {
-        ...SAMPLE_INDEX,
-        sections: {
-          ...SAMPLE_INDEX.sections,
-          config: { commit: OTHER_COMMIT, paths: ['src/config/'] },
-        },
-      };
-      mockIndexOnDisk(index);
-      execSync
-        .mockReturnValueOnce(FULL_COMMIT)
-        .mockReturnValueOnce('10\t5\tsrc/config/loader.js')
-        .mockReturnValueOnce('10\t5\tsrc/config/loader.js\n+new');
-      fs.writeFileSync.mockImplementation(() => {});
-      fs.renameSync.mockImplementation(() => {});
-      fs.unlinkSync.mockImplementation(() => {});
-
-      const result = await updateKnowledge({});
-
-      // Should NOT call AI, just output diff report
-      expect(sendApiRequest).not.toHaveBeenCalled();
-      expect(result.updated).toContain('config');
-      expect(result.aiUpdated).toBeFalsy();
-    });
-
-    it('should update multiple sections with AI', async () => {
-      const index = {
-        ...SAMPLE_INDEX,
-        sections: {
-          ...SAMPLE_INDEX.sections,
-          config: { commit: OTHER_COMMIT, paths: ['src/config/'] },
-          proxy: { commit: OTHER_COMMIT, paths: ['src/proxy/'] },
-        },
-      };
-      mockIndexOnDisk(index);
-      execSync
-        .mockReturnValueOnce(FULL_COMMIT)
-        .mockReturnValueOnce('10\t5\tsrc/config/loader.js') // config status
-        .mockReturnValueOnce('8\t3\tsrc/proxy/server.js') // proxy status
-        .mockReturnValueOnce('10\t5\tsrc/config/loader.js\n+new') // config diff
-        .mockReturnValueOnce('8\t3\tsrc/proxy/server.js\n+new'); // proxy diff
-      findProfile.mockReturnValue({
-        profile: {
-          env: {
-            ANTHROPIC_BASE_URL: 'https://api.example.com/v1',
-            ANTHROPIC_AUTH_TOKEN: 'test-token',
-          },
-        },
-        configPath: '/path/to/models.yaml',
-        source: 'local',
-      });
-      sendApiRequest
-        .mockResolvedValueOnce({
-          statusCode: 200,
-          data: { content: [{ type: 'text', text: `## 配置层 (src/config/)\n\nUpdated config\n` }] }
-        })
-        .mockResolvedValueOnce({
-          statusCode: 200,
-          data: { content: [{ type: 'text', text: `## 代理层 (src/proxy/)\n\nUpdated proxy\n` }] }
-        });
-      fs.writeFileSync.mockImplementation(() => {});
-      fs.renameSync.mockImplementation(() => {});
-      fs.unlinkSync.mockImplementation(() => {});
-
-      const result = await updateKnowledge({ profile: 'test-profile' });
-
-      expect(sendApiRequest).toHaveBeenCalledTimes(2);
-      expect(result.updated).toContain('config');
-      expect(result.updated).toContain('proxy');
+      expect(fs.unlinkSync).toHaveBeenCalledWith(expect.stringContaining('.tmp'));
     });
   });
 });

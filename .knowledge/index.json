@@ -1,36 +1,34 @@
 {
-  "version": 1,
-  "baseCommit": "86ee299f1b2d87b3ef848a16d0eaca61e3c869c5",
-  "updatedAt": "2026-04-11",
-  "current": "2026-04-11-86ee299.md",
-  "previous": null,
+  "version": 2,
+  "baseCommit": "82594d90789b4df94865af8c0efff6ead8aa745f",
+  "updatedAt": "2026-04-12",
   "sections": {
     "bin": {
-      "commit": "86ee299f1b2d87b3ef848a16d0eaca61e3c869c5",
+      "commit": "82594d90789b4df94865af8c0efff6ead8aa745f",
       "paths": [
         "bin/"
       ]
     },
     "config": {
-      "commit": "86ee299f1b2d87b3ef848a16d0eaca61e3c869c5",
+      "commit": "82594d90789b4df94865af8c0efff6ead8aa745f",
       "paths": [
         "src/config/"
       ]
     },
     "commands": {
-      "commit": "86ee299f1b2d87b3ef848a16d0eaca61e3c869c5",
+      "commit": "82594d90789b4df94865af8c0efff6ead8aa745f",
       "paths": [
         "src/commands/"
       ]
     },
     "proxy": {
-      "commit": "86ee299f1b2d87b3ef848a16d0eaca61e3c869c5",
+      "commit": "82594d90789b4df94865af8c0efff6ead8aa745f",
       "paths": [
         "src/proxy/"
       ]
     },
     "api": {
-      "commit": "86ee299f1b2d87b3ef848a16d0eaca61e3c869c5",
+      "commit": "82594d90789b4df94865af8c0efff6ead8aa745f",
       "paths": [
         "src/api/"
       ]
