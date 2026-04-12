@@ -18,23 +18,72 @@ const SECTIONS_DIR = 'sections';
 const INDEX_FILE = 'index.json';
 const TEMP_PREFIX = '.tmp-';
 
-// Section 定义：源码路径映射
-const DEFAULT_SECTIONS = {
-  bin: { paths: ['bin/'] },
-  config: { paths: ['src/config/'] },
-  commands: { paths: ['src/commands/'] },
-  proxy: { paths: ['src/proxy/'] },
-  api: { paths: ['src/api/'] },
-};
+// 自动发现时排除的目录
+const EXCLUDED_DIRS = new Set([
+  // Package managers & VCS
+  'node_modules', '.npm', '.yarn', '.pnpm',
+  // IDE & tooling
+  '.vscode', '.idea', '.github', '.claude', '.knowledge',
+  // Build output
+  'dist', 'build', 'out', 'target', 'coverage', '.cache', '.turbo',
+  // Tests
+  'tests', 'test', '__tests__', 'spec', '.e2e',
+  // Docs & meta
+  'docs', 'doc', 'PRD', 'changelog', 'scripts', 'examples',
+]);
 
-// Section 标题 → 知识文件中的章节标题
-const SECTION_TITLES = {
-  bin: '## 入口与 CLI (bin/)',
-  config: '## 配置层 (src/config/)',
-  commands: '## 命令层 (src/commands/)',
-  proxy: '## 代理层 (src/proxy/)',
-  api: '## API 层 (src/api/)',
-};
+function isExcluded(name) {
+  return name.startsWith('.') || EXCLUDED_DIRS.has(name);
+}
+
+function sectionTitle(key, paths) {
+  return `## ${key} (${paths.join(', ')})`;
+}
+
+/**
+ * 扫描项目目录结构，自动发现源码 section。
+ * - src/ 的子目录各自成为独立 section
+ * - 其他顶层目录各自成为一个 section
+ * - 排除常见非源码目录
+ */
+function discoverSections(projectDir) {
+  const sections = {};
+
+  let topEntries;
+  try {
+    topEntries = fs.readdirSync(projectDir, { withFileTypes: true });
+  } catch {
+    topEntries = [];
+  }
+
+  const topDirs = topEntries.filter((e) => e.isDirectory() && !isExcluded(e.name));
+
+  for (const dir of topDirs) {
+    if (dir.name === 'src') {
+      // 展开 src/ 的子目录
+      let srcEntries;
+      try {
+        srcEntries = fs.readdirSync(path.join(projectDir, 'src'), { withFileTypes: true });
+      } catch {
+        srcEntries = [];
+      }
+      for (const sub of srcEntries) {
+        if (sub.isDirectory() && !isExcluded(sub.name)) {
+          sections[sub.name] = { paths: [`src/${sub.name}/`] };
+        }
+      }
+    } else {
+      sections[dir.name] = { paths: [`${dir.name}/`] };
+    }
+  }
+
+  // 无 section 时回退到项目根目录
+  if (Object.keys(sections).length === 0) {
+    sections['root'] = { paths: ['./'] };
+  }
+
+  return sections;
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -313,7 +362,8 @@ async function updateKnowledge(options = {}) {
       console.log('使用 AI 分析更新知识章节...');
 
       for (const key of staleSections) {
-        const title = SECTION_TITLES[key] || `## ${key}`;
+        const secPaths = index.sections[key]?.paths || [key];
+        const title = sectionTitle(key, secPaths);
         const sectionFile = getSectionPath(key);
         const oldContent = fs.existsSync(sectionFile) ? fs.readFileSync(sectionFile, 'utf8') : '';
         const diff = diffSummary[key]?.diff || '';
@@ -481,9 +531,12 @@ async function rebuildKnowledge(options = {}) {
   const short = getShortHash(headCommit);
   const date = new Date().toISOString().slice(0, 10);
 
+  // 自动发现 sections
+  const discovered = discoverSections(process.cwd());
+
   // 生成 index.json
   const sections = {};
-  for (const [key, def] of Object.entries(DEFAULT_SECTIONS)) {
+  for (const [key, def] of Object.entries(discovered)) {
     sections[key] = { commit: headCommit, paths: def.paths };
   }
 
@@ -497,9 +550,9 @@ async function rebuildKnowledge(options = {}) {
     try {
       console.log('使用 AI 分析生成知识章节...');
 
-      for (const [key, title] of Object.entries(SECTION_TITLES)) {
-        const sectionDef = DEFAULT_SECTIONS[key];
-        const paths = sectionDef.paths.join(', ');
+      for (const [key, def] of Object.entries(discovered)) {
+        const title = sectionTitle(key, def.paths);
+        const paths = def.paths.join(', ');
 
         const prompt = `你是项目知识库维护者。请分析以下路径的源码，生成知识库章节。
 
@@ -526,7 +579,8 @@ async function rebuildKnowledge(options = {}) {
   }
 
   // 生成骨架文件（如果没有 AI 或 AI 失败）
-  for (const [key, title] of Object.entries(SECTION_TITLES)) {
+  for (const [key, def] of Object.entries(discovered)) {
+    const title = sectionTitle(key, def.paths);
     const sectionPath = path.join(sectionsDir, `${key}.md`);
     if (!fs.existsSync(sectionPath)) {
       atomicWrite(sectionPath, `${title}\n\n(待填充)\n`);
@@ -577,4 +631,6 @@ module.exports = {
   rebuildKnowledge,
   classifyChange,
   parseNumstat,
+  discoverSections,
+  sectionTitle,
 };

@@ -19,6 +19,8 @@ const {
   rebuildKnowledge,
   classifyChange,
   parseNumstat,
+  discoverSections,
+  sectionTitle,
 } = require('../../src/commands/knowledge');
 
 const { execSync, spawn } = require('child_process');
@@ -53,6 +55,33 @@ function mockIndexOnDisk(index = SAMPLE_INDEX) {
       return JSON.stringify(index, null, 2);
     }
     return `${path.basename(p)} content`;
+  });
+}
+
+// Mock project directory structure for discoverSections
+function mockProjectStructure() {
+  fs.readdirSync.mockImplementation((dir) => {
+    if (typeof dir !== 'string') return [];
+    // .knowledge dir for cleanupTempFiles
+    if (dir.includes('.knowledge')) return [];
+    // src/ subdirectories
+    if (dir.endsWith('src')) {
+      return [
+        { name: 'config', isDirectory: () => true },
+        { name: 'commands', isDirectory: () => true },
+        { name: 'proxy', isDirectory: () => true },
+        { name: 'api', isDirectory: () => true },
+      ];
+    }
+    // Top-level: return project structure
+    return [
+      { name: 'bin', isDirectory: () => true },
+      { name: 'src', isDirectory: () => true },
+      { name: 'tests', isDirectory: () => true },
+      { name: '.git', isDirectory: () => true },
+      { name: 'node_modules', isDirectory: () => true },
+      { name: 'package.json', isDirectory: () => false },
+    ];
   });
 }
 
@@ -102,6 +131,137 @@ describe('Knowledge Command', () => {
     mockExit.mockRestore();
     mockError.mockRestore();
     mockLog.mockRestore();
+  });
+
+  // =========================================================================
+  // sectionTitle
+  // =========================================================================
+  describe('sectionTitle', () => {
+    it('should generate title from key and paths', () => {
+      expect(sectionTitle('config', ['src/config/'])).toBe('## config (src/config/)');
+    });
+
+    it('should join multiple paths with comma', () => {
+      expect(sectionTitle('core', ['src/core/', 'lib/'])).toBe('## core (src/core/, lib/)');
+    });
+  });
+
+  // =========================================================================
+  // discoverSections
+  // =========================================================================
+  describe('discoverSections', () => {
+    it('should discover src/ subdirectories and bin/', () => {
+      fs.readdirSync.mockImplementation((dir) => {
+        if (typeof dir === 'string' && dir.endsWith('my-project')) {
+          return [
+            { name: 'bin', isDirectory: () => true },
+            { name: 'src', isDirectory: () => true },
+            { name: 'tests', isDirectory: () => true },
+            { name: '.git', isDirectory: () => true },
+            { name: 'node_modules', isDirectory: () => true },
+            { name: 'package.json', isDirectory: () => false },
+          ];
+        }
+        if (typeof dir === 'string' && dir.endsWith('src')) {
+          return [
+            { name: 'config', isDirectory: () => true },
+            { name: 'commands', isDirectory: () => true },
+            { name: 'proxy', isDirectory: () => true },
+            { name: 'api', isDirectory: () => true },
+            { name: 'utils', isDirectory: () => true },
+          ];
+        }
+        return [];
+      });
+
+      const sections = discoverSections('/tmp/my-project');
+
+      expect(sections).toHaveProperty('bin');
+      expect(sections.bin.paths).toEqual(['bin/']);
+      expect(sections).toHaveProperty('config');
+      expect(sections.config.paths).toEqual(['src/config/']);
+      expect(sections).toHaveProperty('commands');
+      expect(sections).toHaveProperty('proxy');
+      expect(sections).toHaveProperty('api');
+      expect(sections).toHaveProperty('utils');
+      // should NOT include excluded dirs
+      expect(sections).not.toHaveProperty('tests');
+      expect(sections).not.toHaveProperty('.git');
+      expect(sections).not.toHaveProperty('node_modules');
+      // src itself should NOT be a section
+      expect(sections).not.toHaveProperty('src');
+    });
+
+    it('should handle project without src/ directory', () => {
+      fs.readdirSync.mockImplementation((dir) => {
+        if (typeof dir === 'string' && dir.endsWith('simple-project')) {
+          return [
+            { name: 'lib', isDirectory: () => true },
+            { name: 'bin', isDirectory: () => true },
+            { name: 'README.md', isDirectory: () => false },
+          ];
+        }
+        return [];
+      });
+
+      const sections = discoverSections('/tmp/simple-project');
+
+      expect(sections).toHaveProperty('lib');
+      expect(sections.lib.paths).toEqual(['lib/']);
+      expect(sections).toHaveProperty('bin');
+      expect(sections.bin.paths).toEqual(['bin/']);
+      expect(Object.keys(sections).length).toBe(2);
+    });
+
+    it('should fallback to project root when no sections found', () => {
+      fs.readdirSync.mockImplementation((dir) => {
+        if (typeof dir === 'string' && dir.endsWith('empty-project')) {
+          return [
+            { name: '.git', isDirectory: () => true },
+            { name: 'README.md', isDirectory: () => false },
+            { name: 'package.json', isDirectory: () => false },
+          ];
+        }
+        return [];
+      });
+
+      const sections = discoverSections('/tmp/empty-project');
+
+      expect(Object.keys(sections).length).toBe(1);
+      const key = Object.keys(sections)[0];
+      expect(sections[key].paths).toEqual(['./']);
+    });
+
+    it('should exclude common non-source directories', () => {
+      fs.readdirSync.mockImplementation((dir) => {
+        if (typeof dir === 'string' && dir.endsWith('project')) {
+          return [
+            { name: 'dist', isDirectory: () => true },
+            { name: 'build', isDirectory: () => true },
+            { name: 'coverage', isDirectory: () => true },
+            { name: 'docs', isDirectory: () => true },
+            { name: '.claude', isDirectory: () => true },
+            { name: '.knowledge', isDirectory: () => true },
+            { name: 'src', isDirectory: () => true },
+          ];
+        }
+        if (typeof dir === 'string' && dir.endsWith('src')) {
+          return [];
+        }
+        return [];
+      });
+
+      const sections = discoverSections('/tmp/project');
+
+      // src/ exists but empty, all other dirs are excluded → fallback to root
+      expect(Object.keys(sections).length).toBe(1);
+      expect(sections).not.toHaveProperty('dist');
+      expect(sections).not.toHaveProperty('build');
+      expect(sections).not.toHaveProperty('coverage');
+      expect(sections).not.toHaveProperty('docs');
+      expect(sections).not.toHaveProperty('.claude');
+      expect(sections).not.toHaveProperty('.knowledge');
+    });
   });
 
   // =========================================================================
@@ -447,7 +607,7 @@ describe('Knowledge Command', () => {
       fs.existsSync.mockReturnValue(true);
       fs.writeFileSync.mockImplementation(() => {});
       fs.mkdirSync.mockImplementation(() => {});
-      fs.readdirSync.mockReturnValue([]);
+      mockProjectStructure();
 
       const result = await rebuildKnowledge();
 
@@ -461,6 +621,10 @@ describe('Knowledge Command', () => {
       const indexContent = JSON.parse(indexWriteCall[1]);
       expect(indexContent.version).toBe(2);
       expect(indexContent.sections).toHaveProperty('bin');
+      expect(indexContent.sections).toHaveProperty('config');
+      expect(indexContent.sections).toHaveProperty('commands');
+      expect(indexContent.sections).toHaveProperty('proxy');
+      expect(indexContent.sections).toHaveProperty('api');
       expect(indexContent).not.toHaveProperty('current');
       expect(indexContent).not.toHaveProperty('previous');
     });
@@ -473,7 +637,7 @@ describe('Knowledge Command', () => {
       });
       fs.writeFileSync.mockImplementation(() => {});
       fs.mkdirSync.mockImplementation(() => {});
-      fs.readdirSync.mockReturnValue([]);
+      mockProjectStructure();
 
       await rebuildKnowledge();
 
@@ -481,7 +645,7 @@ describe('Knowledge Command', () => {
       const sectionWrites = fs.writeFileSync.mock.calls.filter(
         (c) => typeof c[0] === 'string' && c[0].includes('sections') && c[0].endsWith('.md')
       );
-      expect(sectionWrites.length).toBe(5); // 5 sections
+      expect(sectionWrites.length).toBe(5); // bin + 4 src subdirs
       expect(sectionWrites[0][1]).toContain('(待填充)');
     });
 
@@ -498,7 +662,7 @@ describe('Knowledge Command', () => {
       fs.existsSync.mockReturnValue(true);
       fs.writeFileSync.mockImplementation(() => {});
       fs.mkdirSync.mockImplementation(() => {});
-      fs.readdirSync.mockReturnValue([]);
+      mockProjectStructure();
 
       await rebuildKnowledge({});
 
@@ -511,7 +675,7 @@ describe('Knowledge Command', () => {
       fs.existsSync.mockReturnValue(true);
       fs.writeFileSync.mockImplementation(() => {});
       fs.mkdirSync.mockImplementation(() => {});
-      fs.readdirSync.mockReturnValue([]);
+      mockProjectStructure();
 
       findProfile.mockReturnValue({
         profile: { env: { ANTHROPIC_AUTH_TOKEN: 'test-token' } },
@@ -556,7 +720,7 @@ describe('Knowledge Command', () => {
       });
       fs.writeFileSync.mockImplementation(() => {});
       fs.mkdirSync.mockImplementation(() => {});
-      fs.readdirSync.mockReturnValue([]);
+      mockProjectStructure();
 
       findProfile.mockReturnValue({
         profile: { env: { ANTHROPIC_AUTH_TOKEN: 'test-token' } },
@@ -624,7 +788,7 @@ describe('Knowledge Command', () => {
       fs.existsSync.mockReturnValue(true);
       fs.writeFileSync.mockImplementation(() => {});
       fs.mkdirSync.mockImplementation(() => {});
-      fs.readdirSync.mockReturnValue([]);
+      mockProjectStructure();
 
       await knowledgeCommand('rebuild', {});
 

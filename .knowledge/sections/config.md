@@ -1,84 +1,86 @@
-## 配置层 (src/config/)
+## config (src/config/)
 
-配置层由 5 个模块组成，负责 YAML 配置文件的加载/保存、校验、合并，以及环境变量注册表管理和交互式选择。模块间依赖关系为：
+配置子系统的核心模块，负责 YAML 配置文件的加载、存储、合并、校验，以及环境变量注册表的维护和交互式选择。
+
+### 文件结构与职责
+
+| 文件 | 职责 |
+|------|------|
+| `loader.js` | 配置文件 I/O、profile 查找与 base 继承合并 |
+| `merger.js` | 通用深合并工具，处理数组拼接去重语义 |
+| `validator.js` | 配置条目和 ID 的格式校验 |
+| `env-registry.js` | 环境变量注册表：内置变量定义、持久化、交互式选择源 |
+| `env-selector-prompt.js` | 自定义 inquirer prompt，支持左右键切换分类 |
+
+### loader.js
+
+**路径常量：**
+- 全局：`~/.claude/models.yaml`，局部：`./.claude/models.yaml`
+
+**默认配置结构：** `{ settings: { alias: 'cc' }, base: {}, profiles: {} }`
+
+**核心函数：**
+
+- `loadConfig(customConfigPath?)` — 加载配置文件。无 `customConfigPath` 时默认读全局路径；文件不存在时自动创建默认配置并保存后返回
+- `saveConfig(config, customConfigPath?)` — 将配置对象序列化为 YAML 写入文件，自动创建目标目录
+- `loadGlobalConfig()` — 仅在全局配置存在时加载，否则返回 `null`（不触发创建）
+- `resolveProfile(globalConfig, localConfig, profileId)` — 按继承链 `globalBase → localBase → profile` 三层 `deepMerge` 得到最终 profile
+- `findProfile(profileId, customConfigPath, options?)` — 按 **custom > local > global** 优先级查找 profile，返回 `{ profile, configPath, source }`。`options.mergeBase`（默认 `true`）控制是否合并 base 层。全局配置始终预加载用于 base 继承
+- `getSettingsDir(configPath)` — 返回 `settings.<id>.json` 应写入的目录（即 configPath 所在目录）
+
+**导出：** `loadConfig`, `saveConfig`, `findProfile`, `getSettingsDir`, `getLocalConfigPath`, `getGlobalConfigPath`
+
+### merger.js
+
+- `deepMerge(base, override)` — 递归深合并。数组类型执行拼接 + `Set` 去重；对象类型递归合并共享 key；标量类型 override 覆盖。`undefined` 值不覆盖对方
+
+**导出：** `{ deepMerge }`
+
+### validator.js
+
+- `validateConfigEntry(entry)` — 校验条目是否为非 null 对象
+- `validateConfigId(configId, existingConfigs)` — 校验 ID 非空、仅含 `[a-zA-Z0-9._-]`、不与已有配置冲突
+
+**导出：** `{ validateConfigEntry, validateConfigId }`
+
+### env-registry.js
+
+**内置环境变量注册表 `BUILTIN_ENV_VARS`：** 约 130+ 条，按 category 分组：Provider、Auth、Model、Network、MCP、Privacy、Context、Shell、Feature、Plugin、OTelemetry、Vertex、Display。每条包含 `{ key, category, desc, type }`，type 可选 `flag`/`text`/`number`/`choice`。
+
+**注册表分层存储：**
+- 全局：`~/.claude/env-registry.yaml`
+- 局部：`./.claude/env-registry.yaml`
+- 加载时按 `builtin → global override → local override` 三层合并（`mergeEntries`：按 key 匹配覆盖或追加）
+
+**核心函数：**
+
+- `loadEnvRegistry()` — 三层合并后返回完整变量列表
+- `saveEnvRegistry(entries, scope)` — 仅保存用户自定义条目（过滤掉内置条目）到指定 scope 的文件
+- `appendToRegistry(entry, scope)` — 向指定 scope 文件追加单条（key 去重）
+- `buildEnvChoices(entries, existing)` — 构建分类分组的 inquirer choices 列表（已设置变量隐藏，末尾有 Custom/Done 选项）
+- `buildAutocompleteSource(entries, existing)` — 返回支持模糊搜索的 autocomplete source 函数（按 key/desc 匹配）
+- `buildPagedEnvSource(entries, existing)` — 返回分页式 autocomplete source + controller 对象。controller 提供 `switchCategory(dir)` 和 `currentCategory`，支持左右切换分类浏览
+- `promptEnvValue(varDef, currentValue?)` — 根据 varDef.type 弹出对应类型的 inquirer 输入提示（flag→confirm、choice→list、number→input with validation、text→input）
+
+**导出：** `BUILTIN_ENV_VARS`, `loadEnvRegistry`, `saveEnvRegistry`, `appendToRegistry`, `buildEnvChoices`, `buildAutocompleteSource`, `buildPagedEnvSource`, `promptEnvValue`, `getLocalRegistryPath`, `getGlobalRegistryPath`
+
+### env-selector-prompt.js
+
+继承 `inquirer-autocomplete-prompt` 的自定义 prompt 类 `EnvSelectorPrompt`。
+
+- 扩展 `onKeypress(e)`：捕获左右方向键，调用 `this.sourceController.switchCategory(dir)` 切换分类，重置选中索引和搜索输入后刷新列表；其余按键委托给父类处理
+- 构造函数从 `opt.sourceController` 读取控制器实例（由 `buildPagedEnvSource` 产生）
+
+**导出：** `EnvSelectorPrompt`（class 本身）
+
+### 模块间依赖关系
 
 ```
-loader.js → merger.js （无循环依赖）
-env-registry.js, env-selector-prompt.js, validator.js 各自独立
+loader.js ──→ merger.js (deepMerge)
+env-selector-prompt.js ──→ inquirer-autocomplete-prompt (继承)
+env-registry.js ──→ inquirer (交互提示)
+                 ──→ js-yaml (序列化)
+loader.js ──→ js-yaml, fs, path, os
 ```
 
-### loader.js — 配置加载与 Profile 解析
-
-核心职责：管理全局 (`~/.claude/models.yaml`) 和本地 (`.claude/models.yaml`) 配置文件的读写，以及按优先级查找并解析 profile。
-
-**常量**
-- `GLOBAL_CONFIG_PATH`: `~/.claude/models.yaml`
-- `LOCAL_CONFIG_PATH`: `.claude/models.yaml`
-- `DEFAULT_CONFIG`: `{ settings: { alias: 'cc' }, base: {}, profiles: {} }`
-
-**导出接口**
-
-| 函数 | 说明 |
-|------|------|
-| `loadConfig(customConfigPath?)` | 加载配置。无参时加载全局配置，不存在则用 `DEFAULT_CONFIG` 初始化创建。支持自定义路径。 |
-| `saveConfig(config, customConfigPath?)` | 将配置对象序列化为 YAML 写入文件，自动创建目录。 |
-| `loadGlobalConfig()` | 仅读取全局配置，不存在返回 `null`。不触发默认创建。 |
-| `findProfile(profileId, customConfigPath?, options?)` | 按优先级查找 profile：custom → local → global。始终预加载全局配置以支持 base 继承。返回 `{ profile, configPath, source }`。`options.mergeBase`（默认 true）控制是否合并 base。 |
-| `resolveProfile(globalConfig, localConfig, profileId)` | 执行三级合并链：`globalBase → localBase → profile`，每层覆盖前一层。 |
-| `getSettingsDir(configPath)` | 根据配置文件路径返回 settings JSON 文件应写入的目录。 |
-| `getLocalConfigPath()` / `getGlobalConfigPath()` | 返回绝对路径常量。 |
-
-**关键设计决策**
-- `loadConfig` 只在全局路径不存在时自动创建默认配置，其他路径不存在则返回空默认值但不写入文件
-- `findProfile` 始终预加载全局配置（`loadGlobalConfig`），确保 base 继承链完整
-- Launch 命令有意不合并 base，避免覆盖 `~/.claude/settings.json`
-
-### merger.js — 深度合并工具
-
-单一导出 `deepMerge(base, override)`，实现 Claude Code 语义的深度合并：
-- **数组**：拼接后去重（`[...new Set([...base, ...override])]`）
-- **对象**：递归合并共有键
-- **标量**：override 覆盖 base
-- `undefined` 一侧直接取另一侧的值
-
-### validator.js — 配置校验
-
-两个纯函数，无外部依赖：
-
-| 函数 | 校验规则 |
-|------|---------|
-| `validateConfigEntry(entry)` | 必须是非 null 非 Array 的对象 |
-| `validateConfigId(configId, existingConfigs)` | 非空字符串，仅允许 `[a-zA-Z0-9._-]`，且不能与已有配置重名 |
-
-返回值统一为 `{ valid: boolean, error?: string }`。
-
-### env-registry.js — 环境变量注册表
-
-管理 Claude Code 支持的全部环境变量定义，提供内置变量库 + 用户自定义变量的合并机制。
-
-**常量 `BUILTIN_ENV_VARS`**
-约 170 个预定义环境变量，按 12 个分类组织：Provider、Auth、Model、Network、MCP、Privacy、Context、Shell、Feature、Plugin、OTelemetry、Vertex、Display。每个条目结构为 `{ key, category, desc, type, choices? }`，type 支持 `flag`/`text`/`number`/`choice` 四种。
-
-**存储路径**
-- 全局注册表：`~/.claude/env-registry.yaml`
-- 本地注册表：`.claude/env-registry.yaml`
-
-**导出接口**
-
-| 函数 | 说明 |
-|------|------|
-| `loadEnvRegistry()` | 合并三层：内置 → 全局自定义 → 本地自定义。后层覆盖前层同 key 条目。 |
-| `saveEnvRegistry(entries, scope)` | 仅保存非内置条目（用户自定义变量），支持 `'local'` / `'global'` 两种 scope。 |
-| `appendToRegistry(entry, scope)` | 向指定 scope 的注册表追加单条记录，去重。 |
-| `buildEnvChoices(entries, existing)` | 构建 inquirer 原始 choices 列表（按分类分组 + 分隔线），过滤已设置项，末尾附带 Custom/Done 选项。 |
-| `buildAutocompleteSource(entries, existing)` | 构建支持模糊搜索的 autocomplete source 函数，按 key/desc 匹配，跨所有分类。 |
-| `buildPagedEnvSource(entries, existing)` | 构建分页式 autocomplete source，返回 `{ source, controller }`。controller 支持 `switchCategory('prev'/'next')` 和 `currentCategory` getter，用于左右键切换分类。 |
-| `promptEnvValue(varDef, currentValue)` | 根据变量类型（flag → confirm, choice → list, number → 校验数字的 input, text → input）交互式获取值。 |
-
-### env-selector-prompt.js — 自定义交互式选择器
-
-继承 `inquirer-autocomplete-prompt`，扩展左右键分类切换能力：
-- 接收 `opt.sourceController` 对象（由 `buildPagedEnvSource` 生成）
-- 捕获 `left`/`right` 键事件调用 `sourceController.switchCategory()`
-- 切换后清空搜索输入、重置选中索引，触发重新搜索
-- 其他按键委托给父类处理
+`validator.js` 和 `merger.js` 为纯工具模块，无外部依赖。`env-selector-prompt.js` 仅被 `add` 命令引用，配合 `env-registry.js` 的 `buildPagedEnvSource` 使用。

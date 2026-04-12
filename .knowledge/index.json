@@ -1,36 +1,36 @@
 {
   "version": 2,
-  "baseCommit": "82594d90789b4df94865af8c0efff6ead8aa745f",
+  "baseCommit": "4ec57952785fa78dc060dd440a5a15c5b1353abb",
   "updatedAt": "2026-04-12",
   "sections": {
     "bin": {
-      "commit": "82594d90789b4df94865af8c0efff6ead8aa745f",
+      "commit": "4ec57952785fa78dc060dd440a5a15c5b1353abb",
       "paths": [
         "bin/"
       ]
     },
-    "config": {
-      "commit": "82594d90789b4df94865af8c0efff6ead8aa745f",
+    "api": {
+      "commit": "4ec57952785fa78dc060dd440a5a15c5b1353abb",
       "paths": [
-        "src/config/"
+        "src/api/"
       ]
     },
     "commands": {
-      "commit": "82594d90789b4df94865af8c0efff6ead8aa745f",
+      "commit": "4ec57952785fa78dc060dd440a5a15c5b1353abb",
       "paths": [
         "src/commands/"
       ]
     },
-    "proxy": {
-      "commit": "82594d90789b4df94865af8c0efff6ead8aa745f",
+    "config": {
+      "commit": "4ec57952785fa78dc060dd440a5a15c5b1353abb",
       "paths": [
-        "src/proxy/"
+        "src/config/"
       ]
     },
-    "api": {
-      "commit": "82594d90789b4df94865af8c0efff6ead8aa745f",
+    "proxy": {
+      "commit": "4ec57952785fa78dc060dd440a5a15c5b1353abb",
       "paths": [
-        "src/api/"
+        "src/proxy/"
       ]
     }
   }
