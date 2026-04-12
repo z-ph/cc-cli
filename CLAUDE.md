@@ -43,16 +43,27 @@ profiles:
 
 ## Knowledge Base
 
-项目知识库位于 `.knowledge/`，通过 `zcc knowledge` 管理。详细架构知识存储在 `.knowledge/` 中的知识文件内，按需读取。
+项目知识库位于 `.knowledge/`，通过 `zcc knowledge` 管理。每个 section 独立存储为 `sections/<key>.md`，index.json 追踪各 section 的 commit hash。
+
+```
+.knowledge/
+  index.json          # version 2, sections: { key: { commit, paths } }
+  sections/
+    bin.md            # 入口与 CLI
+    config.md         # 配置层
+    commands.md       # 命令层
+    proxy.md          # 代理层
+    api.md            # API 层
+```
 
 **开始任何开发任务前，执行 `zcc knowledge status`。如果有 stale sections，执行 `zcc knowledge update`。**
 
-- `zcc knowledge status` — 检查知识库时效性
-- `zcc knowledge update` — 增量更新过期章节
-- `zcc knowledge verify` — 验证知识库完整性
-- `zcc knowledge rebuild` — 从零重建（仅在损坏时使用）
+- `zcc knowledge status` — 基于 git diff --numstat 检查各 section 时效性
+- `zcc knowledge update [--profile <id>]` — 增量更新过期 section 文件（--profile 启用 AI 分析）
+- `zcc knowledge verify` — 验证 index.json 和 section 文件完整性
+- `zcc knowledge rebuild [--profile <id>]` — 从零重建，AI 生成各 section 内容
 
-Section 到源码路径的映射定义在 `.knowledge/index.json` 的 `sections` 字段中，新增模块时需更新。
+Section 到源码路径的映射定义在 `src/commands/knowledge.js` 的 `DEFAULT_SECTIONS` 中，新增模块时需更新。
 
 ## Workflow Rules
 
