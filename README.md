@@ -64,6 +64,10 @@ zcc use strict -g    # 写入 ~/.claude/settings.json（全局）
 | `zcc serve list` | 列出运行中的代理 |
 | `zcc serve stop [profile-id]` | 停止指定代理（`--all` 停止所有） |
 | `zcc serve log <profile-id>` | 查看代理请求日志（`-n` 指定行数，默认 20） |
+| `zcc knowledge status` | 检查知识库章节时效性 |
+| `zcc knowledge update` | 增量更新过期的知识章节 |
+| `zcc knowledge verify` | 验证知识库完整性 |
+| `zcc knowledge rebuild` | 重建知识库（扫描项目目录结构） |
 
 所有命令支持 `-g`（全局）和 `-t <file>`（自定义配置文件）选项。
 
@@ -235,6 +239,59 @@ profiles:
 ```
 
 > **注意：** 代理启动后会在 profile 中自动写入 `proxy` 字段（url/pid/port/token），无需手动编辑。`zcc <id>` 检测到 `proxy` 字段且进程存活时，会自动通过代理地址启动。
+
+---
+
+## 知识库管理（zcc knowledge）
+
+`zcc knowledge` 提供项目知识库管理功能，基于 git commit hash 追踪知识时效性，支持增量更新。
+
+知识库结构：
+```
+.knowledge/
+  index.json          # version 2, sections: { key: { commit, paths } }
+  sections/
+    bin.md
+    config.md
+    commands.md
+    ...
+```
+
+### 快速上手
+
+```bash
+# 重建知识库（自动扫描项目目录结构）
+zcc knowledge rebuild
+
+# 使用 AI 分析生成知识章节（推荐）
+zcc knowledge rebuild --profile <profile-id>
+
+# 检查知识库时效性
+zcc knowledge status
+
+# 增量更新过期的章节
+zcc knowledge update
+
+# 使用 AI 分析更新章节内容
+zcc knowledge update --profile <profile-id>
+
+# 验证知识库完整性
+zcc knowledge verify
+```
+
+### 自动发现规则
+
+`zcc knowledge rebuild` 自动扫描项目目录结构：
+- `src/` 的子目录各自成为独立 section
+- 其他顶层目录各自成为一个 section
+- 排除常见非源码目录（`node_modules`、`.vscode`、`tests`、`docs` 等）
+
+### 更新检测
+
+`zcc knowledge status` 基于 `git diff --numstat` 检测变更：
+- ✅ up to date — 章节已最新
+- ⚡ minor — 轻微变更，可选更新
+- ⚠️ stale — 重大变更，建议更新
 
 ---
 
