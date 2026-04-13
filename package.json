@@ -8,27 +8,42 @@
   "files": [
     "bin",
     "src",
-    "example.yaml"
+    "example.yaml",
+    "src/web/public"
   ],
   "scripts": {
     "test": "jest",
     "test:watch": "jest --watch",
+    "prepublishOnly": "pnpm web:build",
+    "web:dev": "vite",
+    "web:build": "vite build",
     "release:patch": "node scripts/release.js patch",
     "release:minor": "node scripts/release.js minor",
     "release:major": "node scripts/release.js major",
     "gh:release": "node scripts/publish-github.js"
   },
   "dependencies": {
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
+    "@mui/icons-material": "^9.0.0",
+    "@mui/material": "^9.0.0",
     "commander": "^12.0.0",
+    "express": "^5.2.1",
     "inquirer": "^9.2.0",
     "inquirer-autocomplete-prompt": "^3.0.1",
-    "js-yaml": "^4.1.0"
+    "js-yaml": "^4.1.0",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5"
   },
   "engines": {
     "node": ">=18.0.0"
   },
   "devDependencies": {
-    "jest": "^30.3.0"
+    "@vitejs/plugin-react": "^4.7.0",
+    "jest": "^30.3.0",
+    "playwright": "^1.59.1",
+    "react-syntax-highlighter": "^16.1.1",
+    "vite": "^5.4.21"
   },
   "publishConfig": {
     "access": "public",

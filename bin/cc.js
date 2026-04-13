@@ -14,6 +14,7 @@ const { serveCommand } = require('../src/commands/serve');
 const { testCommand } = require('../src/commands/test');
 const { modelsCommand } = require('../src/commands/models');
 const { knowledgeCommand } = require('../src/commands/knowledge');
+const { webCommand } = require('../src/commands/web');
 
 const program = new Command();
 
@@ -138,6 +139,15 @@ const knowledgeCmd = program
   .option('--profile <id>', 'use AI analysis with this profile (for update/rebuild)')
   .action((subcommand, options) => {
     knowledgeCommand(subcommand, options);
+  });
+
+// Web command: visual configuration manager
+program
+  .command('web')
+  .description('启动 Web 可视化配置界面')
+  .option('-p, --port <port>', 'specify port (default: find available)')
+  .action((options) => {
+    webCommand(options);
   });
 
 // Serve command: local model proxy (with subcommands list/stop)

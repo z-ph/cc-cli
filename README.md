@@ -64,6 +64,7 @@ zcc use strict -g    # 写入 ~/.claude/settings.json（全局）
 | `zcc serve list` | 列出运行中的代理 |
 | `zcc serve stop [profile-id]` | 停止指定代理（`--all` 停止所有） |
 | `zcc serve log <profile-id>` | 查看代理请求日志（`-n` 指定行数，默认 20） |
+| `zcc web` | 启动 Web 可视化配置界面（`-p` 指定端口） |
 | `zcc knowledge status` | 检查知识库章节时效性 |
 | `zcc knowledge update` | 增量更新过期的知识章节 |
 | `zcc knowledge verify` | 验证知识库完整性 |
@@ -295,6 +296,55 @@ zcc knowledge verify
 
 ---
 
+## Web 可视化配置（zcc web）
+
+`zcc web` 提供基于浏览器的可视化配置管理界面，支持对所有配置的增删改查操作。
+
+### 安装
+
+```bash
+npm i -g @zphhpzzph/cc-cli@latest
+```
+
+安装后即可使用，无需额外构建步骤。
+
+### 快速上手
+
+```bash
+# 启动 Web 服务，自动打开浏览器
+zcc web
+
+# 指定端口启动
+zcc web -p 8080
+```
+
+### 功能特性
+
+| 功能 | 说明 |
+|------|------|
+| Profile 管理 | 列出、添加、编辑、删除 profiles |
+| Base 配置编辑 | 编辑所有 profiles 共享的 base 配置 |
+| 环境变量编辑 | 可视化编辑 ANTHROPIC_BASE_URL 等环境变量 |
+| 权限配置 | 管理 allow/deny 规则列表 |
+| 快速操作 | 一键启动 Claude Code、应用配置到 settings |
+| 导入/导出 | 支持 JSON/YAML 格式的导入导出 |
+| 查看原始 YAML | 查看配置文件的原始内容 |
+
+### 界面布局
+
+- **左侧导航**：切换本地/全局配置，访问各种操作
+- **主内容区**：显示 profiles 列表，支持编辑、删除、启动等操作
+- **浮动按钮**：快速添加新的 profile
+
+### 技术说明
+
+- 前端：React + Material UI
+- 后端：Express 服务器
+- 默认端口：自动查找空闲端口（从 3000 开始）
+- 按 Ctrl+C 停止服务
+
+---
+
 ## 常见问题
 
 ### Q: 提示 "Profile 'xxx' not found"
@@ -326,6 +376,9 @@ zcc alias ccl    # 改用 ccl 命令
 
 ### Q: 代理启动后如何使用？
 代理启动后会自动写入 `proxy` 字段。直接 `zcc <id>` 即可，launch 命令会检测到代理并通过代理地址启动。代理停止后会自动降级为直连。
+
+### Q: `zcc web` 启动后浏览器没有自动打开？
+手动访问终端中显示的地址（如 `http://localhost:3001`）即可。
 
 ---
 

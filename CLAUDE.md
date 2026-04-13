@@ -13,14 +13,18 @@ The CLI is written in Chinese (README, user-facing messages).
 ```bash
 pnpm test              # Run all tests with Jest
 pnpm test:watch        # Run tests in watch mode
+pnpm web:build         # Build React frontend for zcc web
+pnpm web:dev           # Run Vite dev server for frontend development
 npx jest tests/config/loader.test.js  # Run a single test file
 ```
 
-No build step — this is plain Node.js (>= 18) with no transpilation.
+**注意：** `zcc web` 命令需要先执行 `pnpm web:build` 构建前端。
 
 ## Architecture
 
-**Entry point:** `bin/cc.js` — Commander.js CLI. Subcommands: `list`, `add`, `remove`, `edit`, `parse`, `alias`, `use`, `restore`, `serve`, `knowledge`. All accept a global `-t, --target <file>` option. Each command in `src/commands/` exports a single function.
+**Entry point:** `bin/cc.js` — Commander.js CLI. Subcommands: `list`, `add`, `remove`, `edit`, `parse`, `alias`, `use`, `restore`, `serve`, `knowledge`, `web`. All accept a global `-t, --target <file>` option. Each command in `src/commands/` exports a single function.
+
+**Frontend:** `src/web/` — React + Material UI application, built with Vite. Output to `src/web/public/`.
 
 **Config YAML schema:**
 ```yaml
