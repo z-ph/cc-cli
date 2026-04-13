@@ -28,3 +28,4 @@ cc-docs
 .ENV.claude/
 .claude/
 .ENV
+.knowledge/
