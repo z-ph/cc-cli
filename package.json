@@ -1,6 +1,6 @@
 {
   "name": "@zphhpzzph/cc-cli",
-  "version": "2.4.1",
+  "version": "2.4.2",
   "description": "Quick launcher for Claude Code with custom configurations",
   "bin": {
     "zcc": "./bin/cc.js"
