@@ -7,6 +7,14 @@ export default defineConfig({
   build: {
     outDir: 'public',
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-mui': ['react', 'react-dom', '@mui/material', '@mui/material/styles'],
+          'vendor-mui-icons': ['@mui/icons-material'],
+        },
+      },
+    },
   },
   server: {
     port: 3001,

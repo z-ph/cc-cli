@@ -1,15 +1,23 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
+import CircularProgress from '@mui/material/CircularProgress';
 import Box from '@mui/material/Box';
 import Layout from './Layout';
 import ProfileList from './ProfileList';
-import ProfileEditor from './ProfileEditor';
-import BaseEditor from './BaseEditor';
-import RawYamlViewer from './RawYamlViewer';
-import ConfigImport from './ConfigImport';
-import ConfigExport from './ConfigExport';
 import { fetchConfig, fetchProfiles } from '../api';
+
+const ProfileEditor = lazy(() => import('./ProfileEditor'));
+const BaseEditor = lazy(() => import('./BaseEditor'));
+const RawYamlViewer = lazy(() => import('./RawYamlViewer'));
+const ConfigImport = lazy(() => import('./ConfigImport'));
+const ConfigExport = lazy(() => import('./ConfigExport'));
+
+const LoadingFallback = () => (
+  <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+    <CircularProgress />
+  </Box>
+);
 
 const theme = createTheme({
   palette: {
@@ -196,42 +204,52 @@ function App() {
       </Layout>
 
       {/* Profile Editor Dialog */}
-      <ProfileEditor
-        open={profileEditorOpen}
-        onClose={() => setProfileEditorOpen(false)}
-        profile={editingProfile}
-        onSave={handleSaveProfile}
-      />
+      <Suspense fallback={<LoadingFallback />}>
+        <ProfileEditor
+          open={profileEditorOpen}
+          onClose={() => setProfileEditorOpen(false)}
+          profile={editingProfile}
+          onSave={handleSaveProfile}
+        />
+      </Suspense>
 
       {/* Base Editor Dialog */}
-      <BaseEditor
-        open={baseEditorOpen}
-        onClose={() => setBaseEditorOpen(false)}
-        baseConfig={config?.base || {}}
-        scope={scope}
-      />
+      <Suspense fallback={<LoadingFallback />}>
+        <BaseEditor
+          open={baseEditorOpen}
+          onClose={() => setBaseEditorOpen(false)}
+          baseConfig={config?.base || {}}
+          scope={scope}
+        />
+      </Suspense>
 
       {/* Raw YAML Viewer */}
-      <RawYamlViewer
-        open={rawYamlOpen}
-        onClose={() => setRawYamlOpen(false)}
-        scope={scope}
-      />
+      <Suspense fallback={<LoadingFallback />}>
+        <RawYamlViewer
+          open={rawYamlOpen}
+          onClose={() => setRawYamlOpen(false)}
+          scope={scope}
+        />
+      </Suspense>
 
       {/* Config Import */}
-      <ConfigImport
-        open={importOpen}
-        onClose={() => setImportOpen(false)}
-        onImported={loadData}
-        scope={scope}
-      />
+      <Suspense fallback={<LoadingFallback />}>
+        <ConfigImport
+          open={importOpen}
+          onClose={() => setImportOpen(false)}
+          onImported={loadData}
+          scope={scope}
+        />
+      </Suspense>
 
       {/* Config Export */}
-      <ConfigExport
-        open={exportOpen}
-        onClose={() => setExportOpen(false)}
-        scope={scope}
-      />
+      <Suspense fallback={<LoadingFallback />}>
+        <ConfigExport
+          open={exportOpen}
+          onClose={() => setExportOpen(false)}
+          scope={scope}
+        />
+      </Suspense>
     </ThemeProvider>
   );
 }

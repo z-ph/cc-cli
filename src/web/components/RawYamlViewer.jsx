@@ -8,8 +8,7 @@ import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import CircularProgress from '@mui/material/CircularProgress';
 import Alert from '@mui/material/Alert';
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import { Highlight, themes } from 'prism-react-renderer';
 
 function RawYamlViewer({ open, onClose, scope }) {
   const [content, setContent] = useState('');
@@ -62,20 +61,29 @@ function RawYamlViewer({ open, onClose, scope }) {
               maxHeight: 500,
               overflow: 'auto',
               borderRadius: 1,
-              '& pre': { m: 0 },
             }}
           >
-            <SyntaxHighlighter
-              language="yaml"
-              style={vscDarkPlus}
-              customStyle={{
-                margin: 0,
-                borderRadius: 4,
-                fontSize: 13,
-              }}
-            >
-              {content}
-            </SyntaxHighlighter>
+            <Highlight theme={themes.vsDark} code={content} language="yaml">
+              {({ style, tokens, getLineProps, getTokenProps }) => (
+                <pre
+                  style={{
+                    ...style,
+                    margin: 0,
+                    borderRadius: 4,
+                    fontSize: 13,
+                    padding: 16,
+                  }}
+                >
+                  {tokens.map((line, i) => (
+                    <div key={i} {...getLineProps({ line })}>
+                      {line.map((token, key) => (
+                        <span key={key} {...getTokenProps({ token })} />
+                      ))}
+                    </div>
+                  ))}
+                </pre>
+              )}
+            </Highlight>
           </Box>
         )}
 
