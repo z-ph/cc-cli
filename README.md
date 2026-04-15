@@ -10,7 +10,7 @@
 npm i -g @zphhpzzph/cc-cli@latest
 ```
 
-> **项目地址：** [https://github.com/zphhpzzph/cc-cli](https://github.com/zphhpzzph/cc-cli) — 可下载源码查看或参与贡献
+> **项目地址：** [https://github.com/z-ph/cc-cli](https://github.com/z-ph/cc-cli) — 可下载源码查看或参与贡献
 
 ---
 
@@ -390,3 +390,7 @@ npm uninstall -g @zphhpzzph/cc-cli
 # 删除配置文件（可选）
 rm ~/.claude/models.yaml
 ```
+
+> 喜欢的话可以给个star，欢迎大佬们提出宝贵建议和贡献代码~
+> 欢迎在 GitHub 上提交 pull request，或在 issue 中讨论。
+> github: https://github.com/z-ph/cc-cli
