@@ -1,20 +1,10 @@
 #!/usr/bin/env node
 
 const { Command } = require('commander');
-const { launchCommand } = require('../src/commands/launch');
-const { listCommand } = require('../src/commands/list');
-const { addCommand } = require('../src/commands/add');
-const { removeCommand } = require('../src/commands/remove');
-const { editCommand } = require('../src/commands/edit');
-const { aliasCommand } = require('../src/commands/alias');
-const { useCommand } = require('../src/commands/use');
-const { restoreCommand } = require('../src/commands/restore');
-const { parseCommand } = require('../src/commands/parse');
-const { serveCommand } = require('../src/commands/serve');
-const { testCommand } = require('../src/commands/test');
-const { modelsCommand } = require('../src/commands/models');
-const { knowledgeCommand } = require('../src/commands/knowledge');
-const { webCommand } = require('../src/commands/web');
+
+// Lazy-load command modules to avoid loading heavy dependencies
+// (inquirer, express, etc.) unless the specific command is invoked.
+const lazy = (modPath) => () => require(modPath);
 
 const program = new Command();
 
@@ -33,7 +23,7 @@ program
       program.help();
     }
     const extraArgs = command.args.slice(1);
-    launchCommand(profileId, options, extraArgs);
+    lazy('../src/commands/launch')().launchCommand(profileId, options, extraArgs);
   });
 
 // List command
@@ -42,7 +32,7 @@ program
   .description('List all profiles')
   .option('-g, --global', 'operate on global config (~/.claude/models.yaml)')
   .action((options) => {
-    listCommand({ ...options, target: options.target || program.opts().target });
+    lazy('../src/commands/list')().listCommand({ ...options, target: options.target || program.opts().target });
   });
 
 // Add profile command
@@ -53,7 +43,7 @@ program
   .option('-s, --source <file>', 'import from a settings JSON file')
   .option('-b, --base', 'edit base config instead of a profile')
   .action((profileId, options) => {
-    addCommand(profileId, { ...options, target: options.target || program.opts().target });
+    lazy('../src/commands/add')().addCommand(profileId, { ...options, target: options.target || program.opts().target });
   });
 
 // Remove profile command
@@ -62,7 +52,7 @@ program
   .description('Remove a profile')
   .option('-g, --global', 'operate on global config (~/.claude/models.yaml)')
   .action((profileId, options) => {
-    removeCommand(profileId, { ...options, target: options.target || program.opts().target });
+    lazy('../src/commands/remove')().removeCommand(profileId, { ...options, target: options.target || program.opts().target });
   });
 
 // Edit profile command
@@ -72,7 +62,7 @@ program
   .option('-g, --global', 'operate on global config (~/.claude/models.yaml)')
   .option('-b, --base', 'edit base config instead of a profile')
   .action((profileId, options) => {
-    editCommand(profileId, { ...options, target: options.target || program.opts().target });
+    lazy('../src/commands/edit')().editCommand(profileId, { ...options, target: options.target || program.opts().target });
   });
 
 // Alias command
@@ -80,7 +70,7 @@ program
   .command('alias [name]')
   .description('Change the CLI command alias')
   .action((name, options) => {
-    aliasCommand(name, { ...options, target: options.target || program.opts().target });
+    lazy('../src/commands/alias')().aliasCommand(name, { ...options, target: options.target || program.opts().target });
   });
 
 // Use command (applies profile to settings file without launching)
@@ -90,7 +80,7 @@ program
   .option('-g, --global', 'write to ~/.claude/settings.json instead of ./.claude/settings.local.json')
   .option('-b, --base', 'apply base config instead of a profile')
   .action((profileId, options) => {
-    useCommand(profileId, { ...options, target: options.target || program.opts().target });
+    lazy('../src/commands/use')().useCommand(profileId, { ...options, target: options.target || program.opts().target });
   });
 
 // Restore command
@@ -99,7 +89,7 @@ program
   .description('Restore settings file from backup (settings.source.json)')
   .option('-g, --global', 'restore ~/.claude/settings.json instead of ./.claude/settings.local.json')
   .action((options) => {
-    restoreCommand({ ...options, target: options.target || program.opts().target });
+    lazy('../src/commands/restore')().restoreCommand({ ...options, target: options.target || program.opts().target });
   });
 
 // Parse command: import settings JSON as a profile
@@ -110,7 +100,7 @@ program
   .option('-b, --base', 'save as base config instead of profile')
   .option('-c, --copy', 'copy YAML to clipboard instead of saving to config')
   .action((settingsPath, profileId, options) => {
-    parseCommand(settingsPath, profileId, { ...options, target: options.target || program.opts().target });
+    lazy('../src/commands/parse')().parseCommand(settingsPath, profileId, { ...options, target: options.target || program.opts().target });
   });
 
 // Test command: test API connectivity for a profile
@@ -119,7 +109,7 @@ program
   .description('测试 profile 的 API 连接')
   .option('-b, --base', 'test base config instead of a profile')
   .action((profileId, options) => {
-    testCommand(profileId, { ...options, target: options.target || program.opts().target });
+    lazy('../src/commands/test')().testCommand(profileId, { ...options, target: options.target || program.opts().target });
   });
 
 // Models command: query available models for a profile
@@ -128,7 +118,7 @@ program
   .description('查询 profile 的可用模型列表')
   .option('-b, --base', 'query base config instead of a profile')
   .action((profileId, options) => {
-    modelsCommand(profileId, { ...options, target: options.target || program.opts().target });
+    lazy('../src/commands/models')().modelsCommand(profileId, { ...options, target: options.target || program.opts().target });
   });
 
 // Knowledge command: project knowledge base management
@@ -138,7 +128,7 @@ const knowledgeCmd = program
   .option('--section <name>', 'force update specific section (for update)')
   .option('--profile <id>', 'use AI analysis with this profile (for update/rebuild)')
   .action((subcommand, options) => {
-    knowledgeCommand(subcommand, options);
+    lazy('../src/commands/knowledge')().knowledgeCommand(subcommand, options);
   });
 
 // Web command: visual configuration manager
@@ -147,7 +137,7 @@ program
   .description('启动 Web 可视化配置界面')
   .option('-p, --port <port>', 'specify port (default: find available)')
   .action((options) => {
-    webCommand(options);
+    lazy('../src/commands/web')().webCommand(options);
   });
 
 // Serve command: local model proxy (with subcommands list/stop)
@@ -159,14 +149,14 @@ const serveCmd = program
   .option('--run', 'start proxy and launch Claude Code')
   .option('-t, --target <file>', 'specify custom config file (YAML)')
   .action((profileId, options) => {
-    serveCommand(profileId, undefined, { ...options, target: options.target || program.opts().target });
+    lazy('../src/commands/serve')().serveCommand(profileId, undefined, { ...options, target: options.target || program.opts().target });
   });
 
 serveCmd
   .command('list')
   .description('List running proxy servers')
   .action(() => {
-    serveCommand('list');
+    lazy('../src/commands/serve')().serveCommand('list');
   });
 
 serveCmd
@@ -176,7 +166,7 @@ serveCmd
   .option('-b, --base', 'stop base proxy')
   .option('-t, --target <file>', 'specify custom config file (YAML)')
   .action((profileId, options) => {
-    serveCommand('stop', profileId, { ...options, target: options.target || program.opts().target });
+    lazy('../src/commands/serve')().serveCommand('stop', profileId, { ...options, target: options.target || program.opts().target });
   });
 
 serveCmd
@@ -185,7 +175,7 @@ serveCmd
   .option('-n, --lines <count>', 'number of lines to show', '20')
   .option('-t, --target <file>', 'specify custom config file (YAML)')
   .action((profileId, options) => {
-    serveCommand('log', profileId, { ...options, target: options.target || program.opts().target, lines: parseInt(options.lines, 10) });
+    lazy('../src/commands/serve')().serveCommand('log', profileId, { ...options, target: options.target || program.opts().target, lines: parseInt(options.lines, 10) });
   });
 
 program.parse();
