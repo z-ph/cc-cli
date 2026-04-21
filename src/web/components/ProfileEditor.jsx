@@ -5,12 +5,10 @@ import DialogContent from '@mui/material/DialogContent';
 import DialogActions from '@mui/material/DialogActions';
 import Button from '@mui/material/Button';
 import TextField from '@mui/material/TextField';
+import Autocomplete from '@mui/material/Autocomplete';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import IconButton from '@mui/material/IconButton';
-import List from '@mui/material/List';
-import ListItem from '@mui/material/ListItem';
-import ListItemText from '@mui/material/ListItemText';
 import Divider from '@mui/material/Divider';
 import Accordion from '@mui/material/Accordion';
 import AccordionSummary from '@mui/material/AccordionSummary';
@@ -18,107 +16,155 @@ import AccordionDetails from '@mui/material/AccordionDetails';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
+import { useLanguage } from './LanguageContext';
+import { getTranslation } from '../i18n';
+
+const uid = () => Math.random().toString(36).slice(2, 10);
+
+const ENV_KEY_SUGGESTIONS = [
+  'ANTHROPIC_AUTH_TOKEN',
+  'ANTHROPIC_API_KEY',
+  'ANTHROPIC_BASE_URL',
+  'CLAUDE_CODE_MAX_OUTPUT_TOKENS',
+  'DISABLE_PROMPT_CACHING',
+  'CLAUDE_CODE_USE_BEDROCK',
+  'CLAUDE_CODE_USE_VERTEX',
+  'HTTPS_PROXY',
+  'HTTP_PROXY',
+  'NO_PROXY',
+  'API_TIMEOUT_MS',
+  'DISABLE_COST_WARNINGS',
+  'DISABLE_ERROR_REPORTING',
+  'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC',
+];
+
+const PERMISSION_SUGGESTIONS = [
+  'Bash(*)',
+  'Bash(npm *)',
+  'Bash(pnpm *)',
+  'Bash(git *)',
+  'Bash(node *)',
+  'Bash(npx *)',
+  'Read',
+  'Write',
+  'Edit',
+  'WebFetch',
+  'WebSearch',
+  'mcp__*',
+];
+
+const MODEL_SUGGESTIONS = [
+  'claude-sonnet-4-20250514',
+  'claude-opus-4-20250514',
+  'claude-haiku-4-5-20251001',
+  'claude-sonnet-4-6',
+  'claude-opus-4-7',
+  'claude-haiku-4-5',
+];
 
 function ProfileEditor({ open, onClose, profile, onSave }) {
+  const { language } = useLanguage();
+  const t = (key) => getTranslation(key, language);
   const [id, setId] = useState('');
   const [isExisting, setIsExisting] = useState(false);
-  const [env, setEnv] = useState({});
+  const [envEntries, setEnvEntries] = useState([]);
   const [permissions, setPermissions] = useState({ allow: [], deny: [] });
-  const [modelOverride, setModelOverride] = useState({});
+  const [modelEntries, setModelEntries] = useState([]);
   const [hooks, setHooks] = useState({});
 
   useEffect(() => {
     if (profile) {
       setId(profile.id || '');
       setIsExisting(true);
-      setEnv(profile.env || {});
+      setEnvEntries(
+        Object.entries(profile.env || {}).map(([key, value]) => ({
+          id: uid(), key, value,
+        }))
+      );
       setPermissions(profile.permissions || { allow: [], deny: [] });
-      setModelOverride(profile.modelOverride || {});
+      setModelEntries(
+        Object.entries(profile.modelOverride || {}).map(([source, target]) => ({
+          id: uid(), source, target,
+        }))
+      );
       setHooks(profile.hooks || {});
     } else {
       setId('');
       setIsExisting(false);
-      setEnv({});
+      setEnvEntries([]);
       setPermissions({ allow: [], deny: [] });
-      setModelOverride({});
+      setModelEntries([]);
       setHooks({});
     }
   }, [profile, open]);
 
   const handleSave = () => {
     const profileData = {};
-
+    const env = Object.fromEntries(
+      envEntries.filter((e) => e.key).map((e) => [e.key, e.value])
+    );
     if (Object.keys(env).length > 0) {
       profileData.env = env;
     }
-
     if (permissions.allow?.length > 0 || permissions.deny?.length > 0) {
       profileData.permissions = permissions;
     }
-
+    const modelOverride = Object.fromEntries(
+      modelEntries.filter((e) => e.source).map((e) => [e.source, e.target])
+    );
     if (Object.keys(modelOverride).length > 0) {
       profileData.modelOverride = modelOverride;
     }
-
     if (Object.keys(hooks).length > 0) {
       profileData.hooks = hooks;
     }
-
     onSave(id, profileData, isExisting);
   };
 
   const handleAddEnv = () => {
-    setEnv({ ...env, 'NEW_KEY': '' });
+    setEnvEntries([...envEntries, { id: uid(), key: '', value: '' }]);
   };
 
-  const handleEnvChange = (key, value) => {
-    const newEnv = { ...env };
-    if (key === 'NEW_KEY') {
-      delete newEnv['NEW_KEY'];
-    }
-    newEnv[key] = value;
-    setEnv(newEnv);
-  };
-
-  const handleDeleteEnv = (key) => {
-    const newEnv = { ...env };
-    delete newEnv[key];
-    setEnv(newEnv);
+  const handleDeleteEnv = (id) => {
+    setEnvEntries(envEntries.filter((e) => e.id !== id));
   };
 
   const handleAddPermission = (type) => {
-    const newPermissions = { ...permissions };
-    if (!newPermissions[type]) {
-      newPermissions[type] = [];
-    }
-    newPermissions[type] = [...newPermissions[type], ''];
-    setPermissions(newPermissions);
+    setPermissions((prev) => ({
+      ...prev,
+      [type]: [...(prev[type] || []), ''],
+    }));
   };
 
   const handlePermissionChange = (type, index, value) => {
-    const newPermissions = { ...permissions };
-    newPermissions[type][index] = value;
-    setPermissions(newPermissions);
+    setPermissions((prev) => {
+      const list = [...(prev[type] || [])];
+      list[index] = value;
+      return { ...prev, [type]: list };
+    });
   };
 
   const handleDeletePermission = (type, index) => {
-    const newPermissions = { ...permissions };
-    newPermissions[type] = newPermissions[type].filter((_, i) => i !== index);
-    setPermissions(newPermissions);
+    setPermissions((prev) => ({
+      ...prev,
+      [type]: (prev[type] || []).filter((_, i) => i !== index),
+    }));
+  };
+
+  const handleAddModel = () => {
+    setModelEntries([...modelEntries, { id: uid(), source: '', target: '' }]);
   };
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
-      <DialogTitle>
-        {isExisting ? `编辑 Profile: ${id}` : '添加 Profile'}
-      </DialogTitle>
+      <DialogTitle>{isExisting ? `${t('editProfile')}: ${id}` : t('addProfileTitle')}</DialogTitle>
       <DialogContent>
         <Box sx={{ mt: 2 }}>
           {/* Profile ID */}
           {!isExisting && (
             <TextField
               fullWidth
-              label="Profile ID"
+              label={t('profileId')}
               value={id}
               onChange={(e) => setId(e.target.value)}
               sx={{ mb: 3 }}
@@ -129,46 +175,46 @@ function ProfileEditor({ open, onClose, profile, onSave }) {
           {/* Environment Variables */}
           <Accordion defaultExpanded>
             <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-              <Typography variant="subtitle2">环境变量</Typography>
+              <Typography variant="subtitle2">{t('environmentVariables')}</Typography>
             </AccordionSummary>
             <AccordionDetails>
               <Box sx={{ mb: 1 }}>
-                <Button
-                  size="small"
-                  startIcon={<AddIcon />}
-                  onClick={handleAddEnv}
-                >
-                  添加变量
+                <Button size="small" startIcon={<AddIcon />} onClick={handleAddEnv}>
+                  {t('addVariable')}
                 </Button>
               </Box>
-              {Object.entries(env).map(([key, value]) => (
-                <Box
-                  key={key}
-                  sx={{ display: 'flex', gap: 1, mb: 1, alignItems: 'center' }}
-                >
-                  <TextField
+              {envEntries.map((entry) => (
+                <Box key={entry.id} sx={{ display: 'flex', gap: 1, mb: 1, alignItems: 'center' }}>
+                  <Autocomplete
+                    freeSolo
                     size="small"
-                    placeholder="Key"
-                    value={key === 'NEW_KEY' ? '' : key}
-                    onChange={(e) =>
-                      key === 'NEW_KEY'
-                        ? handleEnvChange('NEW_KEY', value) &&
-                          handleEnvChange(e.target.value, value)
-                        : handleEnvChange(key, value)
-                    }
-                    sx={{ width: 200 }}
+                    options={ENV_KEY_SUGGESTIONS}
+                    value={entry.key}
+                    onInputChange={(e, newValue) => {
+                      setEnvEntries(envEntries.map((en) =>
+                        en.id === entry.id ? { ...en, key: newValue } : en
+                      ));
+                    }}
+                    renderInput={(params) => (
+                      <TextField {...params} placeholder="Key" />
+                    )}
+                    sx={{ width: 260 }}
+                    selectOnFocus
+                    clearOnBlur={false}
+                    handleHomeEndKeys
                   />
                   <TextField
                     size="small"
                     placeholder="Value"
-                    value={value}
-                    onChange={(e) => handleEnvChange(key, e.target.value)}
+                    value={entry.value}
+                    onChange={(e) => {
+                      setEnvEntries(envEntries.map((en) =>
+                        en.id === entry.id ? { ...en, value: e.target.value } : en
+                      ));
+                    }}
                     sx={{ flexGrow: 1 }}
                   />
-                  <IconButton
-                    size="small"
-                    onClick={() => handleDeleteEnv(key)}
-                  >
+                  <IconButton size="small" onClick={() => handleDeleteEnv(entry.id)}>
                     <DeleteIcon fontSize="small" />
                   </IconButton>
                 </Box>
@@ -179,11 +225,11 @@ function ProfileEditor({ open, onClose, profile, onSave }) {
           {/* Permissions */}
           <Accordion>
             <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-              <Typography variant="subtitle2">权限配置</Typography>
+              <Typography variant="subtitle2">{t('permissionsConfig')}</Typography>
             </AccordionSummary>
             <AccordionDetails>
               <Typography variant="subtitle2" gutterBottom>
-                Allow
+                {t('allow')}
               </Typography>
               <Box sx={{ mb: 1 }}>
                 <Button
@@ -191,7 +237,7 @@ function ProfileEditor({ open, onClose, profile, onSave }) {
                   startIcon={<AddIcon />}
                   onClick={() => handleAddPermission('allow')}
                 >
-                  添加允许规则
+                  {t('addAllowRule')}
                 </Button>
               </Box>
               {permissions.allow?.map((rule, index) => (
@@ -199,19 +245,23 @@ function ProfileEditor({ open, onClose, profile, onSave }) {
                   key={`allow-${index}`}
                   sx={{ display: 'flex', gap: 1, mb: 1, alignItems: 'center' }}
                 >
-                  <TextField
+                  <Autocomplete
+                    freeSolo
                     size="small"
-                    placeholder="例如：Bash(npm run *)"
+                    options={PERMISSION_SUGGESTIONS}
                     value={rule}
-                    onChange={(e) =>
-                      handlePermissionChange('allow', index, e.target.value)
-                    }
+                    onInputChange={(e, newValue) => {
+                      handlePermissionChange('allow', index, newValue);
+                    }}
+                    renderInput={(params) => (
+                      <TextField {...params} placeholder={t('allowExample')} />
+                    )}
                     sx={{ flexGrow: 1 }}
+                    selectOnFocus
+                    clearOnBlur={false}
+                    handleHomeEndKeys
                   />
-                  <IconButton
-                    size="small"
-                    onClick={() => handleDeletePermission('allow', index)}
-                  >
+                  <IconButton size="small" onClick={() => handleDeletePermission('allow', index)}>
                     <DeleteIcon fontSize="small" />
                   </IconButton>
                 </Box>
@@ -220,7 +270,7 @@ function ProfileEditor({ open, onClose, profile, onSave }) {
               <Divider sx={{ my: 2 }} />
 
               <Typography variant="subtitle2" gutterBottom>
-                Deny
+                {t('deny')}
               </Typography>
               <Box sx={{ mb: 1 }}>
                 <Button
@@ -228,7 +278,7 @@ function ProfileEditor({ open, onClose, profile, onSave }) {
                   startIcon={<AddIcon />}
                   onClick={() => handleAddPermission('deny')}
                 >
-                  添加拒绝规则
+                  {t('addDenyRule')}
                 </Button>
               </Box>
               {permissions.deny?.map((rule, index) => (
@@ -236,19 +286,23 @@ function ProfileEditor({ open, onClose, profile, onSave }) {
                   key={`deny-${index}`}
                   sx={{ display: 'flex', gap: 1, mb: 1, alignItems: 'center' }}
                 >
-                  <TextField
+                  <Autocomplete
+                    freeSolo
                     size="small"
-                    placeholder="例如：Bash(rm -rf *)"
+                    options={PERMISSION_SUGGESTIONS}
                     value={rule}
-                    onChange={(e) =>
-                      handlePermissionChange('deny', index, e.target.value)
-                    }
+                    onInputChange={(e, newValue) => {
+                      handlePermissionChange('deny', index, newValue);
+                    }}
+                    renderInput={(params) => (
+                      <TextField {...params} placeholder={t('denyExample')} />
+                    )}
                     sx={{ flexGrow: 1 }}
+                    selectOnFocus
+                    clearOnBlur={false}
+                    handleHomeEndKeys
                   />
-                  <IconButton
-                    size="small"
-                    onClick={() => handleDeletePermission('deny', index)}
-                  >
+                  <IconButton size="small" onClick={() => handleDeletePermission('deny', index)}>
                     <DeleteIcon fontSize="small" />
                   </IconButton>
                 </Box>
@@ -259,54 +313,62 @@ function ProfileEditor({ open, onClose, profile, onSave }) {
           {/* Model Override */}
           <Accordion>
             <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-              <Typography variant="subtitle2">模型映射 (Model Override)</Typography>
+              <Typography variant="subtitle2">{t('modelOverride')}</Typography>
             </AccordionSummary>
             <AccordionDetails>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                配置模型名称映射，例如：claude-sonnet-4-20250514 → claude-opus-4-20250514
+                {t('modelOverrideHint')}
               </Typography>
               <Box sx={{ mb: 1 }}>
-                <Button
-                  size="small"
-                  startIcon={<AddIcon />}
-                  onClick={() => setModelOverride({ ...modelOverride, '': '' })}
-                >
-                  添加映射
+                <Button size="small" startIcon={<AddIcon />} onClick={handleAddModel}>
+                  {t('addMapping')}
                 </Button>
               </Box>
-              {Object.entries(modelOverride).map(([source, target]) => (
-                <Box
-                  key={source}
-                  sx={{ display: 'flex', gap: 1, mb: 1, alignItems: 'center' }}
-                >
-                  <TextField
+              {modelEntries.map((entry) => (
+                <Box key={entry.id} sx={{ display: 'flex', gap: 1, mb: 1, alignItems: 'center' }}>
+                  <Autocomplete
+                    freeSolo
                     size="small"
-                    placeholder="源模型名称"
-                    value={source}
-                    onChange={(e) => {
-                      const newOverride = { ...modelOverride };
-                      delete newOverride[source];
-                      newOverride[e.target.value] = target;
-                      setModelOverride(newOverride);
+                    options={MODEL_SUGGESTIONS}
+                    value={entry.source}
+                    onInputChange={(e, newValue) => {
+                      setModelEntries(modelEntries.map((en) =>
+                        en.id === entry.id ? { ...en, source: newValue } : en
+                      ));
                     }}
+                    renderInput={(params) => (
+                      <TextField {...params} placeholder={t('sourceModel')} />
+                    )}
                     sx={{ flexGrow: 1 }}
+                    selectOnFocus
+                    clearOnBlur={false}
+                    handleHomeEndKeys
                   />
-                  <Typography variant="body2" color="text.secondary">→</Typography>
-                  <TextField
+                  <Typography variant="body2" color="text.secondary">
+                    →
+                  </Typography>
+                  <Autocomplete
+                    freeSolo
                     size="small"
-                    placeholder="目标模型名称"
-                    value={target}
-                    onChange={(e) => {
-                      setModelOverride({ ...modelOverride, [source]: e.target.value });
+                    options={MODEL_SUGGESTIONS}
+                    value={entry.target}
+                    onInputChange={(e, newValue) => {
+                      setModelEntries(modelEntries.map((en) =>
+                        en.id === entry.id ? { ...en, target: newValue } : en
+                      ));
                     }}
+                    renderInput={(params) => (
+                      <TextField {...params} placeholder={t('targetModel')} />
+                    )}
                     sx={{ flexGrow: 1 }}
+                    selectOnFocus
+                    clearOnBlur={false}
+                    handleHomeEndKeys
                   />
                   <IconButton
                     size="small"
                     onClick={() => {
-                      const newOverride = { ...modelOverride };
-                      delete newOverride[source];
-                      setModelOverride(newOverride);
+                      setModelEntries(modelEntries.filter((en) => en.id !== entry.id));
                     }}
                   >
                     <DeleteIcon fontSize="small" />
@@ -318,9 +380,9 @@ function ProfileEditor({ open, onClose, profile, onSave }) {
         </Box>
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose}>取消</Button>
+        <Button onClick={onClose}>{t('cancel')}</Button>
         <Button onClick={handleSave} variant="contained" disabled={!id}>
-          保存
+          {t('save')}
         </Button>
       </DialogActions>
     </Dialog>

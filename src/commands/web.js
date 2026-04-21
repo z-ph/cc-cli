@@ -628,7 +628,12 @@ async function webCommand(options = {}) {
   // 优雅关闭
   process.on('SIGINT', () => {
     console.log('\n正在关闭服务...');
+    const forceTimer = setTimeout(() => {
+      console.log('强制关闭');
+      process.exit(0);
+    }, 2000);
     server.close(() => {
+      clearTimeout(forceTimer);
       console.log('服务已关闭');
       process.exit(0);
     });
