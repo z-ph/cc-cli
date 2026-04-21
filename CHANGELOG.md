@@ -1,5 +1,22 @@
 # Changelog
 
+## [2.5.0] - 2026-04-21
+
+### Feat
+
+- zcc web 国际化支持，顶栏一键切换中英文，语言偏好持久化到 localStorage
+- Profile 编辑器输入框添加 Autocomplete 枚举建议（环境变量 Key、权限规则、模型名称）
+
+### Fix
+
+- 修复 Profile 编辑器环境变量 Key 输入框无法输入的 bug（NEW_KEY && 短路逻辑导致重命名永远不生效）
+- 修复 zcc web Ctrl+C 无法终止服务的问题（server.close 等待 keep-alive 连接导致卡死，添加 2s 强制退出）
+- 修复 React hooks exhaustive-deps 警告（loadData/fetchContent 包裹 useCallback）
+
+### Chore
+
+- 添加前端 eslint + prettier + tsconfig 开发工具链
+
 ## [2.4.2] - 2026-04-15
 
 ### Perf
