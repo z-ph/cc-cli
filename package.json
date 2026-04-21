@@ -17,6 +17,9 @@
     "prepublishOnly": "pnpm web:build",
     "web:dev": "vite",
     "web:build": "vite build",
+    "web:lint": "eslint src/web",
+    "web:lint:fix": "eslint src/web --fix",
+    "web:typecheck": "tsc -b src/web",
     "release:patch": "node scripts/release.js patch",
     "release:minor": "node scripts/release.js minor",
     "release:major": "node scripts/release.js major",
@@ -40,9 +43,23 @@
     "node": ">=18.0.0"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@typescript-eslint/eslint-plugin": "^8.58.2",
+    "@typescript-eslint/parser": "^8.58.2",
     "@vitejs/plugin-react": "^4.7.0",
+    "eslint": "^9.39.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.5",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "globals": "^17.5.0",
     "jest": "^30.3.0",
     "playwright": "^1.59.1",
+    "prettier": "^3.8.3",
+    "typescript": "^6.0.2",
+    "typescript-eslint": "^8.58.2",
     "vite": "^5.4.21"
   },
   "publishConfig": {

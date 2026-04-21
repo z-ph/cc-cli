@@ -1,0 +1,32 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "strict": false,
+    "allowJs": true,
+    "checkJs": false,
+    "composite": true,
+    "tsBuildInfoFile": "./node_modules/.cache/.tsbuildinfo"
+  },
+  "include": [
+    "api.js",
+    "i18n.js",
+    "index.jsx",
+    "components/App.jsx",
+    "components/BaseEditor.jsx",
+    "components/ConfigExport.jsx",
+    "components/ConfigImport.jsx",
+    "components/LanguageContext.jsx",
+    "components/Layout.jsx",
+    "components/ProfileEditor.jsx",
+    "components/ProfileList.jsx",
+    "components/RawYamlViewer.jsx"
+  ]
+}
