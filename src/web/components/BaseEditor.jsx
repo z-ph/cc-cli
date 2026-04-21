@@ -7,15 +7,22 @@ import DialogContent from '@mui/material/DialogContent';
 import DialogActions from '@mui/material/DialogActions';
 import Button from '@mui/material/Button';
 import Alert from '@mui/material/Alert';
+import { useLanguage } from './LanguageContext';
+import { getTranslation } from '../i18n';
 
 function BaseEditor({ open, onClose, baseConfig, scope }) {
+  const { language } = useLanguage();
+  const t = (key) => getTranslation(key, language);
   const [base, setBase] = useState({});
   const [saved, setSaved] = useState(false);
 
+  // 当 baseConfig 改变或 dialog 打开时初始化数据
   useEffect(() => {
-    setBase(baseConfig || {});
-    setSaved(false);
-  }, [baseConfig, open]);
+    if (open) {
+      setBase(baseConfig || {});
+      setSaved(false);
+    }
+  }, [open, baseConfig]);
 
   const handleSave = async () => {
     try {
@@ -32,20 +39,20 @@ function BaseEditor({ open, onClose, baseConfig, scope }) {
           onClose();
         }, 1000);
       } else {
-        alert(`保存失败：${result.error}`);
+        alert(`${t('saveFailed')}: ${result.error}`);
       }
     } catch (err) {
-      alert(`保存失败：${err.message}`);
+      alert(`${t('saveFailed')}: ${err.message}`);
     }
   };
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
-      <DialogTitle>编辑 Base 配置</DialogTitle>
+      <DialogTitle>{t('editBaseConfig')}</DialogTitle>
       <DialogContent>
         {saved && (
           <Alert severity="success" sx={{ mb: 2 }}>
-            保存成功
+            {t('saveSuccess')}
           </Alert>
         )}
         <ProfileEditor
@@ -58,9 +65,9 @@ function BaseEditor({ open, onClose, baseConfig, scope }) {
         />
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose}>取消</Button>
+        <Button onClick={onClose}>{t('cancel')}</Button>
         <Button onClick={handleSave} variant="contained">
-          保存 Base 配置
+          {t('saveBaseConfig')}
         </Button>
       </DialogActions>
     </Dialog>

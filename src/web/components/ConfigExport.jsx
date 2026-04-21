@@ -1,30 +1,27 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Dialog from '@mui/material/Dialog';
 import DialogTitle from '@mui/material/DialogTitle';
 import DialogContent from '@mui/material/DialogContent';
 import DialogActions from '@mui/material/DialogActions';
 import Button from '@mui/material/Button';
 import Box from '@mui/material/Box';
-import Typography from '@mui/material/Typography';
 import RadioGroup from '@mui/material/RadioGroup';
 import FormControlLabel from '@mui/material/FormControlLabel';
 import Radio from '@mui/material/Radio';
 import Alert from '@mui/material/Alert';
 import CircularProgress from '@mui/material/CircularProgress';
+import { useLanguage } from './LanguageContext';
+import { getTranslation } from '../i18n';
 
 function ConfigExport({ open, onClose, scope }) {
+  const { language } = useLanguage();
+  const t = (key) => getTranslation(key, language);
   const [format, setFormat] = useState('yaml');
   const [content, setContent] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  useEffect(() => {
-    if (open) {
-      fetchContent();
-    }
-  }, [open, scope, format]);
-
-  const fetchContent = async () => {
+  const fetchContent = useCallback(async () => {
     try {
       setLoading(true);
       const response = await fetch(`/api/config/export?scope=${scope}&format=${format}`);
@@ -35,15 +32,23 @@ function ConfigExport({ open, onClose, scope }) {
       } else {
         setError(result.error);
       }
-    } catch (err) {
-      setError(err.message);
+    } catch {
+      setError(t('fetchFailed'));
     } finally {
       setLoading(false);
     }
-  };
+  }, [scope, format, language]);
+
+  useEffect(() => {
+    if (open) {
+      fetchContent();
+    }
+  }, [open, fetchContent]);
 
   const handleDownload = () => {
-    const blob = new Blob([content], { type: format === 'json' ? 'application/json' : 'text/yaml' });
+    const blob = new Blob([content], {
+      type: format === 'json' ? 'application/json' : 'text/yaml',
+    });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -57,32 +62,20 @@ function ConfigExport({ open, onClose, scope }) {
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(content);
-      alert('已复制到剪贴板');
-    } catch (err) {
-      alert('复制失败');
+      alert(t('copySuccess'));
+    } catch {
+      alert(t('copyFailed'));
     }
   };
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
-      <DialogTitle>导出配置文件</DialogTitle>
+      <DialogTitle>{t('exportConfig')}</DialogTitle>
       <DialogContent>
         <Box sx={{ mb: 2 }}>
-          <RadioGroup
-            row
-            value={format}
-            onChange={(e) => setFormat(e.target.value)}
-          >
-            <FormControlLabel
-              value="yaml"
-              control={<Radio />}
-              label="YAML"
-            />
-            <FormControlLabel
-              value="json"
-              control={<Radio />}
-              label="JSON"
-            />
+          <RadioGroup row value={format} onChange={(e) => setFormat(e.target.value)}>
+            <FormControlLabel value="yaml" control={<Radio />} label="YAML" />
+            <FormControlLabel value="json" control={<Radio />} label="JSON" />
           </RadioGroup>
         </Box>
 
@@ -119,10 +112,10 @@ function ConfigExport({ open, onClose, scope }) {
         )}
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose}>关闭</Button>
-        <Button onClick={handleCopy}>复制</Button>
+        <Button onClick={onClose}>{t('close')}</Button>
+        <Button onClick={handleCopy}>{t('copy')}</Button>
         <Button onClick={handleDownload} variant="contained">
-          下载
+          {t('download')}
         </Button>
       </DialogActions>
     </Dialog>

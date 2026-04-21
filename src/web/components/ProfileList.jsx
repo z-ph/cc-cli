@@ -9,7 +9,6 @@ import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
 import Paper from '@mui/material/Paper';
 import IconButton from '@mui/material/IconButton';
-import Button from '@mui/material/Button';
 import Chip from '@mui/material/Chip';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -17,8 +16,12 @@ import RocketLaunchIcon from '@mui/icons-material/RocketLaunch';
 import ApplyIcon from '@mui/icons-material/CheckCircle';
 import CircularProgress from '@mui/material/CircularProgress';
 import Alert from '@mui/material/Alert';
+import { useLanguage } from './LanguageContext';
+import { getTranslation } from '../i18n';
 
 function ProfileList({ profiles, loading, error, onEdit, onDelete, onLaunch, onUse }) {
+  const { language } = useLanguage();
+  const t = (key) => getTranslation(key, language);
   if (loading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
@@ -39,10 +42,10 @@ function ProfileList({ profiles, loading, error, onEdit, onDelete, onLaunch, onU
     return (
       <Box sx={{ textAlign: 'center', py: 8 }}>
         <Typography variant="h6" color="text.secondary" gutterBottom>
-          没有找到 profiles
+          {t('noProfilesFound')}
         </Typography>
         <Typography variant="body2" color="text.secondary">
-          点击右下角的 + 按钮添加第一个 profile
+          {t('clickToAdd')}
         </Typography>
       </Box>
     );
@@ -54,10 +57,10 @@ function ProfileList({ profiles, loading, error, onEdit, onDelete, onLaunch, onU
         <TableHead>
           <TableRow>
             <TableCell>ID</TableCell>
-            <TableCell>环境变量</TableCell>
-            <TableCell>权限配置</TableCell>
-            <TableCell>其他配置</TableCell>
-            <TableCell align="right">操作</TableCell>
+            <TableCell>{t('env')}</TableCell>
+            <TableCell>{t('permissions')}</TableCell>
+            <TableCell>{t('otherConfig')}</TableCell>
+            <TableCell align="right">{t('actions')}</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
@@ -77,28 +80,19 @@ function ProfileList({ profiles, loading, error, onEdit, onDelete, onLaunch, onU
                 </TableCell>
                 <TableCell>
                   {envCount > 0 ? (
-                    <Chip
-                      label={`${envCount} 变量`}
-                      size="small"
-                      variant="outlined"
-                    />
+                    <Chip label={`${envCount} ${t('variables')}`} size="small" variant="outlined" />
                   ) : (
                     <Typography variant="body2" color="text.secondary">
-                      无
+                      {t('none')}
                     </Typography>
                   )}
                 </TableCell>
                 <TableCell>
                   {hasPermissions ? (
-                    <Chip
-                      label="已配置"
-                      size="small"
-                      color="success"
-                      variant="outlined"
-                    />
+                    <Chip label={t('configured')} size="small" color="success" variant="outlined" />
                   ) : (
                     <Typography variant="body2" color="text.secondary">
-                      无
+                      {t('none')}
                     </Typography>
                   )}
                 </TableCell>
@@ -109,36 +103,24 @@ function ProfileList({ profiles, loading, error, onEdit, onDelete, onLaunch, onU
                     </Typography>
                   ) : (
                     <Typography variant="body2" color="text.secondary">
-                      无
+                      {t('none')}
                     </Typography>
                   )}
                 </TableCell>
                 <TableCell align="right">
-                  <IconButton
-                    size="small"
-                    onClick={() => onEdit(profile)}
-                    title="编辑"
-                  >
+                  <IconButton size="small" onClick={() => onEdit(profile)} title={t('edit')}>
                     <EditIcon />
                   </IconButton>
-                  <IconButton
-                    size="small"
-                    onClick={() => onLaunch(profile.id)}
-                    title="启动 Claude Code"
-                  >
+                  <IconButton size="small" onClick={() => onLaunch(profile.id)} title={t('launch')}>
                     <RocketLaunchIcon />
                   </IconButton>
-                  <IconButton
-                    size="small"
-                    onClick={() => onUse(profile.id)}
-                    title="应用到 settings"
-                  >
+                  <IconButton size="small" onClick={() => onUse(profile.id)} title={t('apply')}>
                     <ApplyIcon />
                   </IconButton>
                   <IconButton
                     size="small"
                     onClick={() => onDelete(profile.id)}
-                    title="删除"
+                    title={t('delete')}
                     color="error"
                   >
                     <DeleteIcon />

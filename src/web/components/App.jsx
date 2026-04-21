@@ -1,10 +1,12 @@
-import React, { useState, useEffect, lazy, Suspense } from 'react';
+import React, { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import CircularProgress from '@mui/material/CircularProgress';
 import Box from '@mui/material/Box';
 import Layout from './Layout';
 import ProfileList from './ProfileList';
+import { useLanguage } from './LanguageContext';
+import { getTranslation } from '../i18n';
 import { fetchConfig, fetchProfiles } from '../api';
 
 const ProfileEditor = lazy(() => import('./ProfileEditor'));
@@ -62,6 +64,8 @@ function App() {
   const [config, setConfig] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const { language } = useLanguage();
+  const t = (key) => getTranslation(key, language);
 
   // Dialog states
   const [profileEditorOpen, setProfileEditorOpen] = useState(false);
@@ -72,7 +76,7 @@ function App() {
   const [editingProfile, setEditingProfile] = useState(null);
 
   // Load data
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       setLoading(true);
       const [configRes, profilesRes] = await Promise.all([
@@ -92,11 +96,11 @@ function App() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [scope]);
 
   useEffect(() => {
     loadData();
-  }, [scope]);
+  }, [loadData]);
 
   const handleAddProfile = () => {
     setEditingProfile(null);
@@ -109,7 +113,7 @@ function App() {
   };
 
   const handleDeleteProfile = async (id) => {
-    if (!window.confirm(`确定要删除 profile '${id}' 吗？`)) {
+    if (!window.confirm(`${t('confirmDelete')} '${id}'?`)) {
       return;
     }
 
@@ -122,18 +126,16 @@ function App() {
       if (result.success) {
         loadData();
       } else {
-        alert(`删除失败：${result.error}`);
+        alert(`${t('deleteFailed')}: ${result.error}`);
       }
     } catch (err) {
-      alert(`删除失败：${err.message}`);
+      alert(`${t('deleteFailed')}: ${err.message}`);
     }
   };
 
   const handleSaveProfile = async (id, profile, isExisting) => {
     try {
-      const url = isExisting
-        ? `/api/profiles/${id}`
-        : `/api/profiles`;
+      const url = isExisting ? `/api/profiles/${id}` : `/api/profiles`;
       const method = isExisting ? 'PUT' : 'POST';
 
       const response = await fetch(`${url}?scope=${scope}`, {
@@ -147,10 +149,10 @@ function App() {
         setProfileEditorOpen(false);
         loadData();
       } else {
-        alert(`保存失败：${result.error}`);
+        alert(`${t('saveFailed')}: ${result.error}`);
       }
     } catch (err) {
-      alert(`保存失败：${err.message}`);
+      alert(`${t('saveFailed')}: ${err.message}`);
     }
   };
 
@@ -162,7 +164,7 @@ function App() {
       const result = await response.json();
       alert(result.message || result.error);
     } catch (err) {
-      alert(`启动失败：${err.message}`);
+      alert(`${t('launchFailed')}: ${err.message}`);
     }
   };
 
@@ -174,7 +176,7 @@ function App() {
       const result = await response.json();
       alert(result.message || result.error);
     } catch (err) {
-      alert(`应用失败：${err.message}`);
+      alert(`${t('applyFailed')}: ${err.message}`);
     }
   };
 
@@ -225,11 +227,7 @@ function App() {
 
       {/* Raw YAML Viewer */}
       <Suspense fallback={<LoadingFallback />}>
-        <RawYamlViewer
-          open={rawYamlOpen}
-          onClose={() => setRawYamlOpen(false)}
-          scope={scope}
-        />
+        <RawYamlViewer open={rawYamlOpen} onClose={() => setRawYamlOpen(false)} scope={scope} />
       </Suspense>
 
       {/* Config Import */}
@@ -244,11 +242,7 @@ function App() {
 
       {/* Config Export */}
       <Suspense fallback={<LoadingFallback />}>
-        <ConfigExport
-          open={exportOpen}
-          onClose={() => setExportOpen(false)}
-          scope={scope}
-        />
+        <ConfigExport open={exportOpen} onClose={() => setExportOpen(false)} scope={scope} />
       </Suspense>
     </ThemeProvider>
   );

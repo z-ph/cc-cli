@@ -11,8 +11,12 @@ import RadioGroup from '@mui/material/RadioGroup';
 import FormControlLabel from '@mui/material/FormControlLabel';
 import Radio from '@mui/material/Radio';
 import Alert from '@mui/material/Alert';
+import { useLanguage } from './LanguageContext';
+import { getTranslation } from '../i18n';
 
 function ConfigImport({ open, onClose, onImported, scope }) {
+  const { language } = useLanguage();
+  const t = (key) => getTranslation(key, language);
   const [format, setFormat] = useState('yaml');
   const [content, setContent] = useState('');
   const [error, setError] = useState(null);
@@ -62,22 +66,18 @@ function ConfigImport({ open, onClose, onImported, scope }) {
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
-      <DialogTitle>导入配置文件</DialogTitle>
+      <DialogTitle>{t('importConfig')}</DialogTitle>
       <DialogContent>
         <Box sx={{ mb: 2 }}>
           <Typography variant="body2" gutterBottom>
-            上传文件
+            {t('uploadFile')}
           </Typography>
-          <input
-            type="file"
-            accept=".json,.yaml,.yml"
-            onChange={handleFileUpload}
-          />
+          <input type="file" accept=".json,.yaml,.yml" onChange={handleFileUpload} />
         </Box>
 
         <Box sx={{ mb: 2 }}>
           <Typography variant="body2" gutterBottom>
-            或粘贴内容
+            {t('orPasteContent')}
           </Typography>
           <TextField
             fullWidth
@@ -85,25 +85,13 @@ function ConfigImport({ open, onClose, onImported, scope }) {
             rows={10}
             value={content}
             onChange={(e) => setContent(e.target.value)}
-            placeholder="粘贴 JSON 或 YAML 内容"
+            placeholder={t('pastePlaceholder')}
           />
         </Box>
 
-        <RadioGroup
-          row
-          value={format}
-          onChange={(e) => setFormat(e.target.value)}
-        >
-          <FormControlLabel
-            value="yaml"
-            control={<Radio />}
-            label="YAML"
-          />
-          <FormControlLabel
-            value="json"
-            control={<Radio />}
-            label="JSON"
-          />
+        <RadioGroup row value={format} onChange={(e) => setFormat(e.target.value)}>
+          <FormControlLabel value="yaml" control={<Radio />} label="YAML" />
+          <FormControlLabel value="json" control={<Radio />} label="JSON" />
         </RadioGroup>
 
         {error && (
@@ -114,14 +102,14 @@ function ConfigImport({ open, onClose, onImported, scope }) {
 
         {success && (
           <Alert severity="success" sx={{ mt: 2 }}>
-            导入成功
+            {t('importSuccess')}
           </Alert>
         )}
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose}>取消</Button>
+        <Button onClick={onClose}>{t('cancel')}</Button>
         <Button onClick={handleImport} variant="contained" disabled={!content}>
-          导入
+          {t('import')}
         </Button>
       </DialogActions>
     </Dialog>
