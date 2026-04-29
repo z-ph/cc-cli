@@ -70,6 +70,8 @@ profiles:
 
 开发工作流已提取为独立 skill（`.claude/skills/zcc-dev-workflow/SKILL.md`），包括 PRD 编写、审查、worktree 隔离、TDD、文档同步的完整流程。标准任务（新功能、跨文件修改、行为变更）自动触发该 skill；简单任务（单文件修复、配置调整）无需走完整流程。
 
+**PRD 是需求的唯一入口**：`PRD/` 目录下的文档是所有需求的唯一权威来源。无论是新增功能、修复 bug、删除功能还是调整行为，都必须在 `PRD/` 中创建或更新文档以留下记录，确保需求变更可追溯。不允许绕过 PRD 直接实施需求。
+
 ## Key Design Decisions
 
 - No field mapping — env vars stored with their real names under `env` sub-object
