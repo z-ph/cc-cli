@@ -1,5 +1,18 @@
 # Changelog
 
+## [2.6.0] - 2026-04-29
+
+### Feat
+
+- zcc web ProfileEditor 环境变量建议列表补全
+  - `ENV_KEY_SUGGESTIONS` 从约 20 个扩展到约 180 个
+  - 与 CLI 端 `env-registry.js` 对齐，覆盖 Provider/Auth/Model/Network/MCP/Privacy/Context/Shell/Feature/Plugin/OTelemetry/Vertex/Display 全部分类
+
+### Chore
+
+- 更新 `.gitignore`，添加 `.eslintcache`、`*.tsbuildinfo`、`.local` 等忽略规则
+- 更新 `CLAUDE.md`，新增 PRD 是唯一需求入口的约束
+
 ## [2.5.0] - 2026-04-21
 
 ### Feat
