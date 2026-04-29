@@ -29,3 +29,11 @@ cc-docs
 .claude/
 .ENV
 .knowledge/
+
+# Cache & build artifacts
+.eslintcache
+*.tsbuildinfo
+*.local
+
+# Ignore all other hidden files (privacy catch-all)
+.*
