@@ -178,4 +178,38 @@ serveCmd
     lazy('../src/commands/serve')().serveCommand('log', profileId, { ...options, target: options.target || program.opts().target, lines: parseInt(options.lines, 10) });
   });
 
+// Help command: zcc help (alias for --help)
+program
+  .command('help')
+  .description('display help for command')
+  .action(() => {
+    program.help();
+  });
+
+// Completion command: generates shell completion scripts
+program
+  .command('completion <shell>')
+  .description('generate shell completion script (bash|zsh)')
+  .action((shell) => {
+    lazy('../src/commands/completion')().completionCommand(shell);
+  });
+
+// Info command: show profile details
+program
+  .command('info <profile-id>')
+  .description('show profile details')
+  .action((profileId, options) => {
+    lazy('../src/commands/info')().infoCommand(profileId, { target: options.target || program.opts().target });
+  });
+
+// Import-env command: import from environment variables
+program
+  .command('import-env')
+  .description('import profile from ANTHROPIC_* environment variables')
+  .option('-g, --global', 'save to global config (~/.claude/models.yaml)')
+  .option('-t, --target <file>', 'specify custom config file (YAML)')
+  .action((options) => {
+    lazy('../src/commands/import-env')().importEnvCommand(options);
+  });
+
 program.parse();
