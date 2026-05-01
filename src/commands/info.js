@@ -1,24 +1,8 @@
 const { loadConfig, findProfile, getLocalConfigPath, getGlobalConfigPath } = require('../config/loader');
-const fs = require('fs');
-
-function maskToken(value) {
-  if (!value) return '(未设置)';
-  if (value.length <= 12) return '***';
-  return value.slice(0, 8) + '***' + value.slice(-4);
-}
+const { maskToken } = require('../utils/mask');
 
 function infoCommand(profileId, options = {}) {
   const customPath = options?.target;
-  const useGlobal = options?.global;
-
-  // Determine scope for loading
-  let config;
-  let configPath;
-
-  if (customPath) {
-    configPath = require('path').resolve(customPath);
-    config = loadConfig(customPath);
-  }
 
   // Find the profile (uses global + local + custom)
   const result = findProfile(profileId, customPath);
@@ -45,7 +29,6 @@ function infoCommand(profileId, options = {}) {
 
   // Handle both formats: env sub-object (add.js convention) and direct keys (legacy)
   const envObj = rawProfile.env || {};
-  const hasEnvSub = Object.keys(envObj).length > 0;
   const directEnv = {};
   for (const [k, v] of Object.entries(rawProfile)) {
     if ((k.startsWith('ANTHROPIC_') || k.startsWith('CLAUDE_CODE_') || k.startsWith('ENABLE_')) && typeof v === 'string') {
@@ -64,7 +47,7 @@ function infoCommand(profileId, options = {}) {
     console.log('  (无)');
   } else {
     for (const [key, value] of Object.entries(allEnv)) {
-      const display = key.includes('TOKEN') ? maskToken(value) : value || '(空)';
+      const display = maskToken(key, value);
       console.log(`  ${key}=${display}`);
     }
   }

@@ -191,7 +191,7 @@ program
   .command('completion <shell>')
   .description('generate shell completion script (bash|zsh)')
   .action((shell) => {
-    require('../src/commands/completion').completionCommand(shell);
+    lazy('../src/commands/completion')().completionCommand(shell);
   });
 
 // Info command: show profile details
@@ -199,7 +199,7 @@ program
   .command('info <profile-id>')
   .description('show profile details')
   .action((profileId, options) => {
-    require('../src/commands/info').infoCommand(profileId, { target: options.target || program.opts().target });
+    lazy('../src/commands/info')().infoCommand(profileId, { target: options.target || program.opts().target });
   });
 
 // Import-env command: import from environment variables
@@ -207,8 +207,9 @@ program
   .command('import-env')
   .description('import profile from ANTHROPIC_* environment variables')
   .option('-g, --global', 'save to global config (~/.claude/models.yaml)')
+  .option('-t, --target <file>', 'specify custom config file (YAML)')
   .action((options) => {
-    require('../src/commands/import-env').importEnvCommand({ ...options, target: options.target || program.opts().target });
+    lazy('../src/commands/import-env')().importEnvCommand(options);
   });
 
 program.parse();

@@ -1,7 +1,9 @@
 const { loadConfig, saveConfig, getLocalConfigPath, getGlobalConfigPath } = require('../config/loader');
 const { validateConfigId } = require('../config/validator');
+const { maskToken } = require('../utils/mask');
 const { default: inquirer } = require('inquirer');
 const fs = require('fs');
+const path = require('path');
 
 const ENV_PREFIXES = [
   'ANTHROPIC_',
@@ -17,7 +19,7 @@ async function importEnvCommand(options = {}) {
   let config;
 
   if (customPath) {
-    configPath = require('path').resolve(customPath);
+    configPath = path.resolve(customPath);
     config = loadConfig(customPath);
   } else if (useGlobal) {
     configPath = getGlobalConfigPath();
@@ -55,10 +57,7 @@ async function importEnvCommand(options = {}) {
   // Show detected vars
   console.log('检测到以下环境变量:\n');
   for (const [key, value] of Object.entries(detected)) {
-    const display = key.includes('TOKEN') || key.includes('API_KEY') || key.includes('SECRET')
-      ? value.slice(0, 8) + '***' + value.slice(-4)
-      : value;
-    console.log(`  ${key}=${display}`);
+    console.log(`  ${key}=${maskToken(key, value)}`);
   }
   console.log();
 
