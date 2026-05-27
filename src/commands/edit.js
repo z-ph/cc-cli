@@ -122,7 +122,7 @@ async function editCommand(profileId, options = {}) {
         type: 'confirm',
         name: 'addMore',
         message: 'Add other settings fields as JSON?',
-        default: Object.keys(existingBase).some(k => k !== 'permissions' && k !== 'env') || false
+        default: false
       }
     ]);
 
@@ -271,7 +271,7 @@ async function editCommand(profileId, options = {}) {
       type: 'confirm',
       name: 'addMore',
       message: 'Add other settings fields as JSON?',
-      default: Object.keys(entry).some(k => k !== 'permissions' && k !== 'env') || false
+      default: false
     }
   ]);
 

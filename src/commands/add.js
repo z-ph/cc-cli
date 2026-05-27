@@ -136,7 +136,7 @@ async function addCommand(profileId, options = {}) {
     const settingsAnswers = await inquirer.prompt([
       { type: 'input', name: 'permissionsAllow', message: 'Permissions allow (comma-separated, empty to skip):', ...(sourcePermAllow ? { default: sourcePermAllow } : {}) },
       { type: 'input', name: 'permissionsDeny', message: 'Permissions deny (comma-separated, empty to skip):', ...(sourcePermDeny ? { default: sourcePermDeny } : {}) },
-      { type: 'confirm', name: 'addMore', message: 'Add other settings fields as JSON?', default: Object.keys(sourceSettings).some(k => k !== 'permissions') || false }
+      { type: 'confirm', name: 'addMore', message: 'Add other settings fields as JSON?', default: false }
     ]);
 
     if (settingsAnswers.permissionsAllow.trim() || settingsAnswers.permissionsDeny.trim()) {
@@ -318,7 +318,7 @@ async function addCommand(profileId, options = {}) {
       type: 'confirm',
       name: 'addMore',
       message: 'Add other settings fields as JSON?',
-      default: Object.keys(sourceSettings).some(k => k !== 'permissions') || false
+      default: false
     }
   ]);
 
