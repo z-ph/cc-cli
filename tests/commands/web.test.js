@@ -35,7 +35,7 @@ describe('web command', () => {
     });
 
     describe('GET /api/profiles', () => {
-      it('should return empty array when no profiles exist', (done) => {
+      it('should return profiles object', (done) => {
         http.get(`http://localhost:${port}/api/profiles?scope=local`, (res) => {
           expect(res.statusCode).toBe(200);
           let data = '';
@@ -43,7 +43,7 @@ describe('web command', () => {
           res.on('end', () => {
             const result = JSON.parse(data);
             expect(result.success).toBe(true);
-            expect(Array.isArray(result.data)).toBe(true);
+            expect(Array.isArray(result.data)).toBe(false);
             done();
           });
         });

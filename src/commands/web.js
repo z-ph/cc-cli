@@ -126,12 +126,7 @@ function createServer() {
       }
 
       const config = loadConfig(configPath);
-      const profiles = Object.entries(config.profiles || {}).map(([id, profile]) => ({
-        id,
-        ...profile,
-      }));
-
-      res.json({ success: true, data: profiles });
+      res.json({ success: true, data: config.profiles || {} });
     } catch (error) {
       res.status(500).json({
         success: false,
@@ -212,6 +207,7 @@ function createServer() {
   app.put('/api/profiles/:id', (req, res) => {
     try {
       const { id } = req.params;
+      delete req.body.id;
       const profile = req.body;
       const scope = req.query.scope || 'local';
       let configPath;

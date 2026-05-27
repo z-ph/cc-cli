@@ -271,7 +271,7 @@ const MODEL_SUGGESTIONS = [
   'claude-haiku-4-5',
 ];
 
-function ProfileEditor({ open, onClose, profile, onSave }) {
+function ProfileEditor({ open, onClose, profileId, profile, onSave }) {
   const { language } = useLanguage();
   const t = (key) => getTranslation(key, language);
   const [id, setId] = useState('');
@@ -282,8 +282,8 @@ function ProfileEditor({ open, onClose, profile, onSave }) {
   const [hooks, setHooks] = useState({});
 
   useEffect(() => {
-    if (profile) {
-      setId(profile.id || '');
+    if (profileId) {
+      setId(profileId || '');
       setIsExisting(true);
       setEnvEntries(
         Object.entries(profile.env || {}).map(([key, value]) => ({
@@ -305,7 +305,7 @@ function ProfileEditor({ open, onClose, profile, onSave }) {
       setModelEntries([]);
       setHooks({});
     }
-  }, [profile, open]);
+  }, [profileId, profile, open]);
 
   const handleSave = () => {
     const profileData = {};

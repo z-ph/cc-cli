@@ -60,7 +60,7 @@ const theme = createTheme({
 
 function App() {
   const [scope, setScope] = useState('local');
-  const [profiles, setProfiles] = useState([]);
+  const [profiles, setProfiles] = useState({});
   const [config, setConfig] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -73,6 +73,7 @@ function App() {
   const [rawYamlOpen, setRawYamlOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
+  const [editingProfileId, setEditingProfileId] = useState(null);
   const [editingProfile, setEditingProfile] = useState(null);
 
   // Load data
@@ -103,11 +104,13 @@ function App() {
   }, [loadData]);
 
   const handleAddProfile = () => {
+    setEditingProfileId(null);
     setEditingProfile(null);
     setProfileEditorOpen(true);
   };
 
-  const handleEditProfile = (profile) => {
+  const handleEditProfile = (profileId, profile) => {
+    setEditingProfileId(profileId);
     setEditingProfile(profile);
     setProfileEditorOpen(true);
   };
@@ -141,7 +144,7 @@ function App() {
       const response = await fetch(`${url}?scope=${scope}`, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, ...profile }),
+        body: JSON.stringify(isExisting ? profile : { id, ...profile }),
       });
       const result = await response.json();
 
@@ -187,7 +190,7 @@ function App() {
         scope={scope}
         onScopeChange={setScope}
         configPath={config?.configPath}
-        profileCount={profiles.length}
+        profileCount={Object.keys(profiles).length}
         onAddProfile={handleAddProfile}
         onEditBase={() => setBaseEditorOpen(true)}
         onViewRawYaml={() => setRawYamlOpen(true)}
@@ -198,7 +201,7 @@ function App() {
           profiles={profiles}
           loading={loading}
           error={error}
-          onEdit={handleEditProfile}
+          onEdit={(profileId, profile) => handleEditProfile(profileId, profile)}
           onDelete={handleDeleteProfile}
           onLaunch={handleLaunch}
           onUse={handleUse}
@@ -210,6 +213,7 @@ function App() {
         <ProfileEditor
           open={profileEditorOpen}
           onClose={() => setProfileEditorOpen(false)}
+          profileId={editingProfileId}
           profile={editingProfile}
           onSave={handleSaveProfile}
         />

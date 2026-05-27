@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Fix
+
+- 修复 zcc web 中 profile 冗余 `id` 字段问题
+  - 移除 GET /api/profiles 中 key 注入为 `id` 字段的行为，返回原始 profiles map
+  - PUT 接口防御性剥离 body 中的 `id`
+  - 前端 `profiles` 从数组改为对象，通过 `Object.entries()` 迭代
+  - ProfileEditor 接收分离的 `profileId` / `profile` props，不再从 `profile.id` 读取
+
 ## [2.6.0] - 2026-04-29
 
 ### Feat

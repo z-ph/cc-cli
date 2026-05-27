@@ -38,7 +38,8 @@ function ProfileList({ profiles, loading, error, onEdit, onDelete, onLaunch, onU
     );
   }
 
-  if (profiles.length === 0) {
+  const profileEntries = Object.entries(profiles);
+  if (profileEntries.length === 0) {
     return (
       <Box sx={{ textAlign: 'center', py: 8 }}>
         <Typography variant="h6" color="text.secondary" gutterBottom>
@@ -64,18 +65,18 @@ function ProfileList({ profiles, loading, error, onEdit, onDelete, onLaunch, onU
           </TableRow>
         </TableHead>
         <TableBody>
-          {profiles.map((profile) => {
+          {profileEntries.map(([profileId, profile]) => {
             const envCount = profile.env ? Object.keys(profile.env).length : 0;
             const hasPermissions = profile.permissions ? true : false;
             const otherKeys = Object.keys(profile).filter(
-              (k) => k !== 'env' && k !== 'permissions' && k !== 'id'
+              (k) => k !== 'env' && k !== 'permissions'
             );
 
             return (
-              <TableRow key={profile.id} hover>
+              <TableRow key={profileId} hover>
                 <TableCell>
                   <Typography variant="body2" fontWeight="medium">
-                    {profile.id}
+                    {profileId}
                   </Typography>
                 </TableCell>
                 <TableCell>
@@ -108,18 +109,18 @@ function ProfileList({ profiles, loading, error, onEdit, onDelete, onLaunch, onU
                   )}
                 </TableCell>
                 <TableCell align="right">
-                  <IconButton size="small" onClick={() => onEdit(profile)} title={t('edit')}>
+                  <IconButton size="small" onClick={() => onEdit(profileId, profile)} title={t('edit')}>
                     <EditIcon />
                   </IconButton>
-                  <IconButton size="small" onClick={() => onLaunch(profile.id)} title={t('launch')}>
+                  <IconButton size="small" onClick={() => onLaunch(profileId)} title={t('launch')}>
                     <RocketLaunchIcon />
                   </IconButton>
-                  <IconButton size="small" onClick={() => onUse(profile.id)} title={t('apply')}>
+                  <IconButton size="small" onClick={() => onUse(profileId)} title={t('apply')}>
                     <ApplyIcon />
                   </IconButton>
                   <IconButton
                     size="small"
-                    onClick={() => onDelete(profile.id)}
+                    onClick={() => onDelete(profileId)}
                     title={t('delete')}
                     color="error"
                   >
