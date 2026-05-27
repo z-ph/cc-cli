@@ -2,6 +2,10 @@
 
 ## [2.6.1] - 2026-05-28
 
+### Feat
+
+- shell completion、info、import-env 和 help 命令修复与增强
+
 ### Fix
 
 - 修复 zcc web 中 profile 冗余 `id` 字段问题
@@ -9,6 +13,7 @@
   - PUT 接口防御性剥离 body 中的 `id`
   - 前端 `profiles` 从数组改为对象，通过 `Object.entries()` 迭代
   - ProfileEditor 接收分离的 `profileId` / `profile` props，不再从 `profile.id` 读取
+- 修复 edit/add 的 JSON 编辑器 confirm 默认值为 false，避免回车误触弹窗
 
 ## [2.6.0] - 2026-04-29
 
