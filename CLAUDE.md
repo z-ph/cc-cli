@@ -72,6 +72,10 @@ profiles:
 
 **PRD 是需求的唯一入口**：`PRD/` 目录下的文档是所有需求的唯一权威来源。无论是新增功能、修复 bug、删除功能还是调整行为，都必须在 `PRD/` 中创建或更新文档以留下记录，确保需求变更可追溯。不允许绕过 PRD 直接实施需求。
 
+## Shell Rules
+
+- **禁止多余的 `cd` 命令**：工作目录已经是项目根目录，执行 git 或查看仓库操作时不要使用 `cd`，避免不必要的权限提示。
+
 ## Key Design Decisions
 
 - No field mapping — env vars stored with their real names under `env` sub-object
