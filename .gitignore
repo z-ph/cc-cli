@@ -27,6 +27,7 @@ pnpm-debug.log*
 cc-docs
 .ENV.claude/
 .claude/
+claude/
 .ENV
 .knowledge/
 
